@@ -103,6 +103,19 @@
   #dump td { padding: 2px 4px; vertical-align: top; border-bottom: 1px solid #f0f0f0; word-break: break-word; }
   #dump td:first-child { color: #555; white-space: nowrap; width: 42%; }
   #dump td.empty { color: #bbb; }
+
+  /* Chế độ nhúng (?embed=1): ẩn bảng debug, form chiếm hết bề rộng — dùng trong màn gán nhãn
+     nơi đã có panel "Dữ liệu bóc tách" riêng, khỏi trùng lặp và bớt một thanh cuộn. */
+  body.embed { padding: 0; background: #fff; }
+  body.embed .panel { display: none; }
+  body.embed .sheet { max-width: none; border: none; }
+
+  /* Thanh cuộn mảnh, gọn cho toàn trang mock */
+  * { scrollbar-width: thin; scrollbar-color: #b7c3d6 transparent; }
+  *::-webkit-scrollbar { width: 9px; height: 9px; }
+  *::-webkit-scrollbar-thumb { background: #b7c3d6; border-radius: 6px; border: 2px solid #fff; }
+  *::-webkit-scrollbar-thumb:hover { background: #8aa0c0; }
+  *::-webkit-scrollbar-track { background: transparent; }
 </style>
 </head>
 <body>
@@ -135,6 +148,11 @@
 <script>
 (() => {
   "use strict";
+
+  // Nhúng trong màn gán nhãn: ?embed=1 -> ẩn bảng debug, form full bề rộng.
+  if (new URLSearchParams(location.search).get("embed") === "1") {
+    document.body.classList.add("embed");
+  }
 
   // ────────────────────────── dữ liệu dựng sẵn ──────────────────────────
   // SỬA SO VỚI BẢN MOCK GỐC: lấy đúng các giá trị mà id_doc_type() của pipeline phát ra

@@ -153,28 +153,35 @@ export interface LabelRecord {
   clientDossierId: string | null
   fields: BatchField[]
   fieldCount: number
+  status: LabelStatus
   labeledBy: string | null
   labeledAt: string
 }
+
+export type LabelStatus = 'pending' | 'draft' | 'done'
 
 export interface LabelStats {
   enabled: boolean
-  byProcedure: Record<string, { labels: number; results: number }>
+  byProcedure: Record<string, { labels: number; results: number; done: number }>
 }
 
-export interface LabelListItem {
+export interface WorklistItem {
   itemId: string
   clientDossierId: string | null
-  fieldCount: number
-  labeledBy: string | null
-  labeledAt: string
+  status: LabelStatus
+  labeled: boolean
   hasResult: boolean
+  resultFieldCount: number
+  labelFieldCount: number
+  labeledBy: string | null
+  labeledAt: string | null
 }
 
-export interface LabelListResponse {
+export interface WorklistResponse {
   enabled: boolean
   total: number
-  items: LabelListItem[]
+  counts: { total: number; pending: number; draft: number; done: number }
+  items: WorklistItem[]
 }
 
 export interface HistoryResult {

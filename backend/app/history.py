@@ -191,11 +191,13 @@ async def save_label(
     client_dossier_id: str | None,
     fields: list[dict],
     labeled_by: str | None,
+    status: str = "draft",
 ) -> dict:
-    """Luu nhan ket qua dung (do nguoi dung sua). Ghi de nhan cu cua cung ho so."""
+    """Luu nhan ket qua dung. status = "draft" (dang sua) hoac "done" (hoan thien)."""
     db = get_db()
     if db is None:
         return {"saved": False, "reason": "Chua bat MongoDB nen khong luu duoc nhan."}
+    status = "done" if status == "done" else "draft"
     await db.labels.update_one(
         {"itemId": item_id},
         {
@@ -205,6 +207,7 @@ async def save_label(
                 "clientDossierId": client_dossier_id,
                 "fields": fields,
                 "fieldCount": len(fields),
+                "status": status,
                 "labeledBy": labeled_by,
                 "labeledAt": _now(),
             },
@@ -212,7 +215,7 @@ async def save_label(
         },
         upsert=True,
     )
-    return {"saved": True}
+    return {"saved": True, "status": status}
 
 
 async def get_label(item_id: str) -> dict | None:
@@ -231,32 +234,68 @@ async def label_stats() -> dict:
     out: dict[str, dict] = {}
     async for row in db.labels.aggregate([{"$group": {"_id": "$procedure", "n": {"$sum": 1}}}]):
         out.setdefault(row["_id"] or "", {})["labels"] = row["n"]
+    async for row in db.labels.aggregate(
+        [{"$match": {"status": "done"}}, {"$group": {"_id": "$procedure", "n": {"$sum": 1}}}]
+    ):
+        out.setdefault(row["_id"] or "", {})["done"] = row["n"]
     async for row in db.results.aggregate([{"$group": {"_id": "$procedure", "n": {"$sum": 1}}}]):
         out.setdefault(row["_id"] or "", {})["results"] = row["n"]
-    # Chuan hoa: thu tuc nao chi co mot trong hai van co du hai so
     for v in out.values():
         v.setdefault("labels", 0)
+        v.setdefault("done", 0)
         v.setdefault("results", 0)
     return {"enabled": True, "byProcedure": out}
 
 
-async def list_labels(procedure: str, limit: int = 200) -> dict:
-    """Danh sach ho so da gan nhan cua mot thu tuc, moi ban cho biet co ket qua boc tach khong."""
+async def list_labels(procedure: str, limit: int = 500) -> dict:
+    """Worklist gan nhan cua mot thu tuc: MOI ho so da boc tach + trang thai nhan.
+
+    status moi ho so: "pending" (chua gan), "draft" (dang sua), "done" (hoan thien).
+    """
     db = get_db()
     if db is None:
-        return {"enabled": False, "total": 0, "items": []}
-    cursor = db.labels.find({"procedure": procedure}).sort("labeledAt", -1).limit(limit)
-    labels = [_clean(doc) async for doc in cursor]
-    has_result = {r["itemId"] async for r in db.results.find({"procedure": procedure}, {"itemId": 1})}
-    items = [
-        {
-            "itemId": lb["itemId"],
-            "clientDossierId": lb.get("clientDossierId"),
-            "fieldCount": lb.get("fieldCount", 0),
-            "labeledBy": lb.get("labeledBy"),
-            "labeledAt": lb.get("labeledAt"),
-            "hasResult": lb["itemId"] in has_result,
-        }
-        for lb in labels
-    ]
-    return {"enabled": True, "total": len(items), "items": items}
+        return {"enabled": False, "total": 0, "counts": {}, "items": []}
+
+    # Nhan cua thu tuc: itemId -> thong tin nhan
+    labels: dict[str, dict] = {}
+    async for lb in db.labels.find({"procedure": procedure}):
+        labels[lb["itemId"]] = lb
+
+    # Ho so da boc tach cua thu tuc (nguon de gan nhan)
+    rows: list[dict] = []
+    seen: set[str] = set()
+    async for r in db.results.find({"procedure": procedure}).sort("savedAt", -1):
+        iid = r["itemId"]
+        seen.add(iid)
+        lb = labels.get(iid)
+        rows.append(_worklist_row(iid, r, lb))
+
+    # Nhan cho ho so ma ket qua da bi xoa -> van hien de khong mat nhan
+    for iid, lb in labels.items():
+        if iid not in seen:
+            rows.append(_worklist_row(iid, None, lb))
+
+    order = {"pending": 0, "draft": 1, "done": 2}
+    rows.sort(key=lambda x: (order.get(x["status"], 9), x["clientDossierId"] or ""))
+    counts = {
+        "total": len(rows),
+        "pending": sum(1 for x in rows if x["status"] == "pending"),
+        "draft": sum(1 for x in rows if x["status"] == "draft"),
+        "done": sum(1 for x in rows if x["status"] == "done"),
+    }
+    return {"enabled": True, "total": len(rows), "counts": counts, "items": rows[:limit]}
+
+
+def _worklist_row(item_id: str, result: dict | None, label: dict | None) -> dict:
+    status = label.get("status", "draft") if label else "pending"
+    return {
+        "itemId": item_id,
+        "clientDossierId": (label or result or {}).get("clientDossierId"),
+        "status": status,
+        "labeled": label is not None,
+        "hasResult": result is not None,
+        "resultFieldCount": (result or {}).get("fieldCount", 0),
+        "labelFieldCount": (label or {}).get("fieldCount", 0),
+        "labeledBy": (label or {}).get("labeledBy"),
+        "labeledAt": (label or {}).get("labeledAt"),
+    }

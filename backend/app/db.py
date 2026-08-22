@@ -69,3 +69,4 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.labels.create_index("itemId", unique=True)
     await db.labels.create_index("jobId")
     await db.labels.create_index("procedure")
+    await db.labels.create_index([("procedure", 1), ("status", 1)])

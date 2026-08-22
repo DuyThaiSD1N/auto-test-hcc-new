@@ -46,9 +46,14 @@ export default function EformPage() {
   const [fillResult, setFillResult] = useState<FillResult | null>(null)
   const [filling, setFilling] = useState(false)
   const [frameReady, setFrameReady] = useState(false)
+  const [frameEpoch, setFrameEpoch] = useState(0)
+  const [status, setStatus] = useState<'pending' | 'draft' | 'done'>('pending')
+  const [autoSaveMsg, setAutoSaveMsg] = useState<string | null>(null)
 
   const frameRef = useRef<HTMLIFrameElement>(null)
-  const autoFilledFor = useRef<string | null>(null)
+  const lastFilled = useRef<string>('')
+  const fieldsRef = useRef<BatchField[]>([])
+  const loadedItem = useRef<string | null>(null)
   const eform = eformUrl(key)
 
   useEffect(() => {
@@ -83,28 +88,63 @@ export default function EformPage() {
         const saved = await api.getLabel(itemId)
         if (cancelled) return
         setFields(saved.fields)
+        setStatus(saved.status ?? 'draft')
         setLabeled(true)
         setLabeledInfo(
           `Đã gán nhãn bởi ${saved.labeledBy ?? '?'} lúc ${new Date(saved.labeledAt).toLocaleString('vi-VN')}`,
         )
       } catch {
-        if (!cancelled) setFields(baseFields)
+        if (!cancelled) {
+          setFields(baseFields)
+          setStatus('pending')
+        }
       }
+      if (!cancelled) loadedItem.current = itemId
     })()
     return () => {
       cancelled = true
     }
   }, [itemId])
 
+  // Luôn giữ fieldsRef = fields mới nhất (dùng cho tự điền và tự lưu)
+  useEffect(() => {
+    fieldsRef.current = fields
+  }, [fields])
+
+  // Tự lưu tiến trình: sau khi sửa 1.2s không thao tác thì lưu nháp, không mất khi
+  // chuyển tab hay mở lại từ lịch sử. Giữ nguyên trạng thái "done" nếu đã hoàn thiện.
+  useEffect(() => {
+    if (!dirty || !itemId || fields.length === 0) return
+    const t = setTimeout(async () => {
+      try {
+        const keep = status === 'done' ? 'done' : 'draft'
+        await api.saveLabel(itemId, {
+          fields: fieldsRef.current,
+          procedure: key,
+          clientDossierId: null,
+          status: keep,
+        })
+        setLabeled(true)
+        setStatus(keep)
+        setDirty(false)
+        setAutoSaveMsg(`Đã lưu tiến trình lúc ${new Date().toLocaleTimeString('vi-VN')}`)
+      } catch {
+        /* lưu tự động thất bại thì thôi, người dùng vẫn bấm Lưu tay được */
+      }
+    }, 1200)
+    return () => clearTimeout(t)
+  }, [dirty, fields, itemId, key, status])
+
   // Tự điền eForm khi mở (sau khi có dữ liệu) — "form đã điền những gì"
   useEffect(() => {
-    if (view !== 'eform' || !frameReady || !itemId || fields.length === 0) return
-    const sig = `${itemId}:${fields.length}`
-    if (autoFilledFor.current === sig) return
-    autoFilledFor.current = sig
+    if (view !== 'eform' || !frameReady || fields.length === 0) return
+    // Điền lại khi: frame vừa nạp lại (frameEpoch), hoặc dữ liệu thay đổi.
+    // Nhờ vậy chuyển sang JSON rồi quay lại eForm, form không bị trống.
+    const sig = `${frameEpoch}:${JSON.stringify(fields)}`
+    if (lastFilled.current === sig) return
+    lastFilled.current = sig
     void handleFill()
-    // fields đọc tại thời điểm gọi
-  }, [view, frameReady, itemId, fields.length])
+  }, [view, frameReady, frameEpoch, fields])
 
   // ------------------------------------------------------------ sửa trường
 
@@ -124,16 +164,18 @@ export default function EformPage() {
     setDirty(true)
   }, [])
 
-  async function save() {
+  async function save(status: 'draft' | 'done' = 'draft') {
     if (!itemId) return
     setSaving(true)
     setSaveMsg(null)
     setError(null)
     try {
-      await api.saveLabel(itemId, { fields, procedure: key, clientDossierId: null })
+      await api.saveLabel(itemId, { fields, procedure: key, clientDossierId: null, status })
       setLabeled(true)
+      setStatus(status)
       setDirty(false)
-      setSaveMsg('Đã lưu nhãn kết quả đúng.')
+      setAutoSaveMsg(null)
+      setSaveMsg(status === 'done' ? 'Đã lưu và đánh dấu hoàn thiện.' : 'Đã lưu nháp.')
       setLabeledInfo(
         `Đã gán nhãn bởi ${user?.username ?? ''} lúc ${new Date().toLocaleString('vi-VN')}`,
       )
@@ -238,9 +280,12 @@ export default function EformPage() {
                   <iframe
                     ref={frameRef}
                     className="doc-frame"
-                    src={eform}
+                    src={`${eform}?embed=1`}
                     title="eForm"
-                    onLoad={() => setFrameReady(true)}
+                    onLoad={() => {
+              setFrameReady(true)
+              setFrameEpoch((n) => n + 1)
+            }}
                   />
                 ) : (
                   <div className="empty">Thủ tục này chưa có eForm dựng sẵn.</div>
@@ -292,10 +337,28 @@ export default function EformPage() {
             </div>
 
             <div className="label-actions">
-              <button className="primary-btn" onClick={save} disabled={saving || !fields.length}>
-                {saving ? 'Đang lưu…' : labeled ? 'Cập nhật nhãn' : 'Lưu nhãn kết quả đúng'}
-              </button>
-              {dirty && <span className="muted-small">Có thay đổi chưa lưu</span>}
+              <div className="label-actions row">
+                <button
+                  className="ghost-btn"
+                  onClick={() => save('draft')}
+                  disabled={saving || !fields.length}
+                >
+                  Lưu nháp
+                </button>
+                <button
+                  className="primary-btn inline"
+                  onClick={() => save('done')}
+                  disabled={saving || !fields.length}
+                >
+                  {saving ? 'Đang lưu…' : 'Lưu & hoàn thiện'}
+                </button>
+              </div>
+              {status === 'done' && <span className="muted-small ok-text">● Đã hoàn thiện</span>}
+              {dirty ? (
+                <span className="muted-small">Đang chờ tự lưu…</span>
+              ) : autoSaveMsg ? (
+                <span className="muted-small ok-text">{autoSaveMsg}</span>
+              ) : null}
               {saveMsg && <span className="muted-small ok-text">{saveMsg}</span>}
             </div>
           </aside>

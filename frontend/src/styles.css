@@ -1005,3 +1005,76 @@ input {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ---------- Worklist gán nhãn ---------- */
+
+.status-pill.s-pending {
+  background: #f1f5fb;
+  color: var(--muted);
+}
+
+.status-pill.s-draft {
+  background: #fff7e6;
+  color: #8a5a00;
+}
+
+.status-pill.s-done {
+  background: #e6f6ec;
+  color: #176b36;
+}
+
+.progress-legend .chip {
+  font-size: 12px;
+}
+
+.inline-edit {
+  padding: 8px 4px 12px;
+}
+
+.inline-edit .label-fields {
+  max-width: 640px;
+}
+
+.label-actions.row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border-top: none;
+  padding-top: 0;
+}
+
+/* ---------- Thanh cuộn mảnh, gọn cho toàn app ---------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #b7c3d6 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #c2ccdb;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #9aacc6;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Cuộn êm trên các panel dài */
+.label-pane,
+.doc-view,
+.json-view,
+.eform-side {
+  scroll-behavior: smooth;
+}

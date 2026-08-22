@@ -114,8 +114,8 @@ export default function ProceduresPage() {
                     <span className="radio" aria-hidden="true" />
                     <span className="procedure-label">{p.label}</span>
                     {stats[p.key]?.labels ? (
-                      <span className="label-count" title="Số nhãn đã gán">
-                        {stats[p.key].labels} nhãn
+                      <span className="label-count" title="Đã hoàn thiện / Tổng nhãn">
+                        {stats[p.key].done}/{stats[p.key].labels} nhãn
                       </span>
                     ) : null}
                     {p.code && <span className="code-badge">{p.code}</span>}
@@ -148,6 +148,10 @@ export default function ProceduresPage() {
                   <dt>Nhãn đã gán</dt>
                   <dd>{stats[selected.key]?.labels ?? 0}</dd>
                 </div>
+                <div>
+                  <dt>Đã hoàn thiện</dt>
+                  <dd>{stats[selected.key]?.done ?? 0}</dd>
+                </div>
               </dl>
               <a className="detail-link" href={selected.url} target="_blank" rel="noreferrer">
                 Mở trang thủ tục gốc ↗
@@ -164,7 +168,7 @@ export default function ProceduresPage() {
                 className="ghost-btn full"
                 onClick={() => navigate(`/thu-tuc/${selected.key}/nhan`)}
               >
-                Xem nhãn đã gán ({stats[selected.key]?.labels ?? 0})
+                Gán nhãn / worklist ({stats[selected.key]?.done ?? 0}/{stats[selected.key]?.labels ?? 0})
               </button>
               <p className="hint">Tải hồ sơ lên để hệ thống bóc tách dữ liệu tự động.</p>
             </div>

@@ -6,7 +6,7 @@ import type {
   BatchField,
   HistoryJobDetail,
   HistoryResult,
-  LabelListResponse,
+  WorklistResponse,
   LabelStats,
   LabelRecord,
   HistoryListResponse,
@@ -148,7 +148,7 @@ export const api = {
   labelStats: () => request<LabelStats>('/history/stats'),
 
   labelsByProcedure: (procedure: string) =>
-    request<LabelListResponse>(`/history/labels?procedure=${encodeURIComponent(procedure)}`),
+    request<WorklistResponse>(`/history/labels?procedure=${encodeURIComponent(procedure)}`),
 
   historyResult: (itemId: string) => request<HistoryResult>(`/history/items/${itemId}/result`),
 
@@ -161,6 +161,7 @@ export const api = {
       jobId?: string | null
       procedure?: string | null
       clientDossierId?: string | null
+      status?: 'draft' | 'done'
     },
   ) =>
     request<{ saved: boolean }>(`/history/items/${itemId}/label`, {

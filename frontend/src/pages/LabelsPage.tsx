@@ -1,8 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { LabelListItem, Procedure } from '../api/types'
+import type { BatchField, LabelStatus, Procedure, WorklistItem, WorklistResponse } from '../api/types'
+import FieldsEditor from '../components/FieldsEditor'
 import { useAuth } from '../auth/AuthContext'
+
+const STATUS_LABEL: Record<LabelStatus, string> = {
+  pending: 'Chưa gán',
+  draft: 'Đang sửa',
+  done: 'Hoàn thiện',
+}
 
 function formatTime(value: string | null): string {
   if (!value) return '—'
@@ -10,16 +17,24 @@ function formatTime(value: string | null): string {
   return Number.isNaN(d.getTime()) ? value : d.toLocaleString('vi-VN')
 }
 
+type Filter = 'all' | LabelStatus
+
 export default function LabelsPage() {
   const { key = '' } = useParams()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
 
   const [procedure, setProcedure] = useState<Procedure | null>(null)
-  const [items, setItems] = useState<LabelListItem[]>([])
-  const [enabled, setEnabled] = useState(true)
+  const [data, setData] = useState<WorklistResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [filter, setFilter] = useState<Filter>('all')
+
+  // Dòng đang mở để sửa: itemId -> trạng thái sửa
+  const [editing, setEditing] = useState<string | null>(null)
+  const [editFields, setEditFields] = useState<BatchField[]>([])
+  const [editLoading, setEditLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     api.procedure(key).then(setProcedure).catch(() => setProcedure(null))
@@ -30,15 +45,66 @@ export default function LabelsPage() {
     api
       .labelsByProcedure(key)
       .then((res) => {
-        setItems(res.items)
-        setEnabled(res.enabled)
+        setData(res)
         setError(null)
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Không tải được danh sách nhãn'))
+      .catch((err) => setError(err instanceof Error ? err.message : 'Không tải được danh sách'))
       .finally(() => setLoading(false))
   }, [key])
 
   useEffect(load, [load])
+
+  const items = useMemo(() => {
+    const all = data?.items ?? []
+    return filter === 'all' ? all : all.filter((x) => x.status === filter)
+  }, [data, filter])
+
+  const counts = data?.counts ?? { total: 0, pending: 0, draft: 0, done: 0 }
+  const percent = counts.total ? Math.round((counts.done / counts.total) * 100) : 0
+
+  // ------------------------------------------------------------ sửa tại chỗ
+
+  async function openEdit(it: WorklistItem) {
+    if (editing === it.itemId) {
+      setEditing(null)
+      return
+    }
+    setEditing(it.itemId)
+    setEditFields([])
+    setEditLoading(true)
+    try {
+      // Ưu tiên nhãn đã lưu; chưa có thì lấy kết quả bóc tách làm nền để sửa
+      const saved = await api.getLabel(it.itemId).catch(() => null)
+      if (saved) {
+        setEditFields(saved.fields)
+      } else {
+        const res = await api.itemResult(it.itemId).catch(() => null)
+        const hist = res ? null : await api.historyResult(it.itemId).catch(() => null)
+        setEditFields((res?.result ?? hist?.result)?.fields ?? [])
+      }
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  async function persist(it: WorklistItem, status: 'draft' | 'done') {
+    setSaving(true)
+    setError(null)
+    try {
+      await api.saveLabel(it.itemId, {
+        fields: editFields,
+        procedure: key,
+        clientDossierId: it.clientDossierId,
+        status,
+      })
+      setEditing(null)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không lưu được nhãn')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="app-shell">
@@ -46,8 +112,8 @@ export default function LabelsPage() {
         <div className="brand compact">
           <div className="brand-mark">AT</div>
           <div>
-            <strong>Nhãn đã gán — {procedure?.label ?? key}</strong>
-            <span>Các hồ sơ đã có nhãn kết quả đúng của thủ tục này</span>
+            <strong>Gán nhãn — {procedure?.label ?? key}</strong>
+            <span>Danh sách hồ sơ, sửa và đánh dấu hoàn thiện theo từng thủ tục</span>
           </div>
         </div>
         <div className="user-box">
@@ -71,50 +137,135 @@ export default function LabelsPage() {
           </button>
         </div>
 
-        {!enabled && (
+        {!data?.enabled && !loading && (
           <div className="alert warn">
-            Chưa bật MongoDB (<code>APP_MONGO_URI</code>) nên không có nhãn để hiển thị.
+            Chưa bật MongoDB (<code>APP_MONGO_URI</code>) nên không có worklist.
           </div>
         )}
         {error && <div className="alert error">{error}</div>}
 
+        {/* Tiến trình */}
         <section className="panel">
           <div className="panel-head">
-            <h2>Hồ sơ đã gán nhãn</h2>
-            <span className="counter">{loading ? 'Đang tải…' : `${items.length} nhãn`}</span>
+            <h2>Tiến trình gán nhãn</h2>
+            <span className="counter">
+              {counts.done}/{counts.total} hoàn thiện ({percent}%)
+            </span>
+          </div>
+          <div className="progress-wrap">
+            <div className="progress-bar">
+              <div className="progress-fill" style={{ width: `${percent}%` }} />
+            </div>
+            <div className="progress-legend">
+              <button className={`chip${filter === 'all' ? ' active' : ''}`} onClick={() => setFilter('all')}>
+                Tất cả {counts.total}
+              </button>
+              <button
+                className={`chip${filter === 'pending' ? ' active' : ''}`}
+                onClick={() => setFilter('pending')}
+              >
+                Chưa gán {counts.pending}
+              </button>
+              <button
+                className={`chip${filter === 'draft' ? ' active' : ''}`}
+                onClick={() => setFilter('draft')}
+              >
+                Đang sửa {counts.draft}
+              </button>
+              <button
+                className={`chip${filter === 'done' ? ' active' : ''}`}
+                onClick={() => setFilter('done')}
+              >
+                Hoàn thiện {counts.done}
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-head">
+            <h2>Hồ sơ</h2>
+            <span className="counter">{loading ? 'Đang tải…' : `${items.length} hồ sơ`}</span>
           </div>
 
           {!loading && items.length === 0 ? (
-            <div className="empty">Thủ tục này chưa có nhãn nào. Gán nhãn từ màn hình xem hồ sơ.</div>
+            <div className="empty">Không có hồ sơ nào ở trạng thái này.</div>
           ) : (
             <div className="table-scroll">
               <table className="dossier-table">
                 <thead>
                   <tr>
                     <th>Mã hồ sơ</th>
+                    <th>Trạng thái</th>
                     <th>Số trường</th>
                     <th>Người gán</th>
-                    <th>Thời điểm</th>
+                    <th>Cập nhật</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((it) => (
-                    <tr key={it.itemId}>
-                      <td>{it.clientDossierId || it.itemId}</td>
-                      <td>{it.fieldCount}</td>
-                      <td>{it.labeledBy ?? '—'}</td>
-                      <td className="muted-small">{formatTime(it.labeledAt)}</td>
-                      <td className="row-actions">
-                        <button
-                          className="ghost-btn"
-                          onClick={() => navigate(`/thu-tuc/${key}/eform?item=${it.itemId}`)}
-                        >
-                          Xem form + JSON
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {items.map((it) => {
+                    const open = editing === it.itemId
+                    return (
+                      <Fragment key={it.itemId}>
+                        <tr className={open ? 'row-open' : ''}>
+                          <td>{it.clientDossierId || it.itemId}</td>
+                          <td>
+                            <span className={`status-pill s-${it.status}`}>
+                              {STATUS_LABEL[it.status]}
+                            </span>
+                          </td>
+                          <td>{it.labeled ? it.labelFieldCount : it.resultFieldCount}</td>
+                          <td>{it.labeledBy ?? '—'}</td>
+                          <td className="muted-small">{formatTime(it.labeledAt)}</td>
+                          <td className="row-actions">
+                            <button
+                              className="ghost-btn"
+                              onClick={() => openEdit(it)}
+                              disabled={!it.hasResult && !it.labeled}
+                            >
+                              {open ? 'Đóng' : 'Sửa'}
+                            </button>
+                            <button
+                              className="ghost-btn"
+                              onClick={() => navigate(`/thu-tuc/${key}/eform?item=${it.itemId}`)}
+                            >
+                              Form + JSON
+                            </button>
+                          </td>
+                        </tr>
+                        {open && (
+                          <tr>
+                            <td colSpan={6}>
+                              {editLoading ? (
+                                <p className="muted-small">Đang tải dữ liệu…</p>
+                              ) : (
+                                <div className="inline-edit">
+                                  <FieldsEditor fields={editFields} onChange={setEditFields} />
+                                  <div className="label-actions row">
+                                    <button
+                                      className="ghost-btn"
+                                      onClick={() => persist(it, 'draft')}
+                                      disabled={saving}
+                                    >
+                                      Lưu nháp
+                                    </button>
+                                    <button
+                                      className="primary-btn inline"
+                                      onClick={() => persist(it, 'done')}
+                                      disabled={saving}
+                                    >
+                                      {saving ? 'Đang lưu…' : 'Lưu & hoàn thiện'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

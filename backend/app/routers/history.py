@@ -102,6 +102,7 @@ async def save_label(
         payload.get("clientDossierId"),
         fields,
         current_user.username,
+        status=str(payload.get("status") or "draft"),
     )
     if not result.get("saved"):
         raise HTTPException(status_code=503, detail=result.get("reason") or "Khong luu duoc nhan.")

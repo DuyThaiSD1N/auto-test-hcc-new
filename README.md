@@ -195,35 +195,31 @@ Backend kiểm tra trước khi gọi ra ngoài: định dạng file (JPG, PNG, 
 100MB mỗi hồ sơ, mã thủ tục phải có trong danh mục. Lỗi từ API bóc tách được dịch sang thông báo
 tiếng Việt (`INVALID_BATCH_SECRET`, `BATCH_QUEUE_FULL`, `FILE_TOO_LARGE`…).
 
-## Gán nhãn kết quả đúng
+## Gán nhãn kết quả đúng (worklist theo thủ tục)
 
-Màn hình `/thu-tuc/{key}/eform?item={itemId}` để **xem và gán nhãn**:
+Mỗi thủ tục có **worklist gán nhãn riêng** tại `/thu-tuc/{key}/nhan`:
 
-- **Trái:** chuyển giữa **Form đã điền** (eForm tự điền theo dữ liệu hiện tại) và **JSON bóc tách**
-  (kết quả thô từ pipeline).
-- **Phải:** danh sách trường **sửa được tại chỗ** (trường địa chỉ tách ô con Tỉnh/Xã/Địa chỉ).
-  Bấm **Lưu nhãn kết quả đúng** để lưu bản đã sửa vào MongoDB.
+- **Thanh tiến trình**: số hồ sơ đã hoàn thiện / tổng, kèm bộ lọc theo trạng thái.
+- **Ba trạng thái** mỗi hồ sơ: `Chưa gán` (mới bóc tách) → `Đang sửa` (nháp) → `Hoàn thiện`.
+- **Sửa tại chỗ**: bấm *Sửa* mở ngay trình sửa trường dưới dòng đó, không phải mở từng hồ sơ.
+  *Lưu nháp* giữ trạng thái đang sửa; *Lưu & hoàn thiện* đánh dấu xong.
+- Bấm *Form + JSON* để mở màn hình xem form đã điền + JSON bóc tách (cũng sửa/lưu được ở đó).
 
-Mở lại hồ sơ đã gán nhãn thì tự nạp bản đã sửa và hiện **● Đã gán nhãn**. Đây là ground-truth để
-sau này chấm điểm độ chính xác của bóc tách.
+Danh sách thủ tục hiện badge tiến trình **"đã hoàn thiện / tổng nhãn"** trên mỗi thủ tục.
 
-**Không lưu file tài liệu gốc** (PDF/Word/ảnh) người dùng tải lên — chỉ lưu JSON bóc tách và nhãn.
+Nhãn lưu ở collection `labels` (khóa `itemId`), có thêm `status` (`draft`/`done`), người gán, thời điểm.
+Trình sửa trường dùng chung [`components/FieldsEditor.tsx`](frontend/src/components/FieldsEditor.tsx)
+cho cả worklist lẫn màn hình xem chi tiết.
 
-### Thống kê & xem theo thủ tục
-
-- Danh sách thủ tục hiện **số nhãn đã gán** trên mỗi thủ tục (badge "N nhãn").
-- Panel chi tiết có nút **Xem nhãn đã gán (N)** → trang `/thu-tuc/{key}/nhan` liệt kê các hồ sơ đã
-  gán nhãn; mỗi dòng bấm **Xem form + JSON** để mở lại màn hình trên.
-
-Nhãn lưu ở collection `labels` (khóa `itemId`, kèm người gán và thời điểm).
+**Không lưu file tài liệu gốc** — chỉ lưu JSON bóc tách và nhãn.
 
 | Method | Đường dẫn | Mô tả |
 |--------|-----------|-------|
-| GET | `/api/history/stats` | số nhãn + số kết quả theo từng thủ tục |
-| GET | `/api/history/labels?procedure=` | danh sách hồ sơ đã gán nhãn của thủ tục |
+| GET | `/api/history/stats` | mỗi thủ tục: số kết quả, số nhãn, số hoàn thiện |
+| GET | `/api/history/labels?procedure=` | worklist: mọi hồ sơ + trạng thái nhãn + counts |
 | GET | `/api/history/items/{itemId}/result` | JSON bóc tách đã lưu |
 | GET | `/api/history/items/{itemId}/label` | nhãn đã lưu |
-| PUT | `/api/history/items/{itemId}/label` | lưu/cập nhật nhãn |
+| PUT | `/api/history/items/{itemId}/label` | lưu nhãn kèm `status` (`draft`/`done`) |
 
 ## Dữ liệu tỉnh/thành & phường/xã
 
