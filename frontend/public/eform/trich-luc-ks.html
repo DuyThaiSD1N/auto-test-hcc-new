@@ -160,13 +160,15 @@
     "Trích lục kết hôn (bản sao)/ Trích lục ghi chú kết hôn (bản sao)",
     "Trích lục khai tử (bản sao)",
   ];
-  // Bộ địa bàn rút gọn, đủ để thử tầng tỉnh → xã (thật sự tải sau ~350ms như AJAX).
-  const DIA_BAN = {
-    "Lào Cai": ["Phường Lào Cai", "Phường Cam Đường", "Xã Bảo Hà"],
-    "Cao Bằng": ["Phường Thục Phán", "Phường Tân Giang", "Xã Đức Long"],
-    "Lâm Đồng": ["Phường Cam Ly", "Phường Xuân Hương - Đà Lạt", "Xã Đơn Dương"],
-  };
-  const TINH = Object.keys(DIA_BAN);
+  // Địa bàn 34 tỉnh/thành + phường/xã (2025), nạp từ /eform/dia-ban.json.
+  // File này sinh từ dữ liệu chuẩn của backend: python tools/gen-diaban.py
+  // Tải bất đồng bộ đúng như cổng thật load tỉnh/xã qua AJAX.
+  let DIA_BAN = {};
+  let TINH = [];
+  const DIA_BAN_READY = fetch("/eform/dia-ban.json")
+    .then((r) => (r.ok ? r.json() : {}))
+    .then((data) => { DIA_BAN = data; TINH = Object.keys(data); })
+    .catch(() => { DIA_BAN = {}; TINH = []; });
 
   // ────────────────────────── đặc tả biểu mẫu ──────────────────────────
   // Sửa/thêm ở đây sau khi crawl form thật bằng docs/crawl-legacy-eform.js.
@@ -364,8 +366,11 @@
 
     const wQuocGia = buildSelectWidget(`custom-select-${name}-qg`, ["Việt Nam", "Lào", "Campuchia"]);
     const wXa = buildSelectWidget(`custom-select-${name}-xa`, () =>
-      new Promise((res) => setTimeout(() => res(DIA_BAN[tinhDaChon] || []), 350)), { search: true });
-    const wTinh = buildSelectWidget(`custom-select-${name}-tinh`, TINH, {
+      // Chờ dữ liệu địa bàn tải xong rồi trả danh sách xã của tỉnh đã chọn
+      DIA_BAN_READY.then(() => DIA_BAN[tinhDaChon] || []), { search: true });
+    // Dạng hàm để đọc TINH LÚC MỞ dropdown (dữ liệu nạp bất đồng bộ, lúc dựng form còn rỗng)
+    const wTinh = buildSelectWidget(`custom-select-${name}-tinh`,
+      () => DIA_BAN_READY.then(() => TINH), {
       search: true,
       onPick: (v) => { tinhDaChon = v; wXa._reset(); },   // đổi tỉnh → xã cũ không còn hợp lệ
     });

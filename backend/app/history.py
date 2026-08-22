@@ -180,3 +180,83 @@ async def delete_job(job_id: str) -> dict:
     await db.items.delete_many({"jobId": job_id})
     res = await db.jobs.delete_one({"jobId": job_id})
     return {"deleted": res.deleted_count > 0}
+
+
+# ------------------------------------------------------ nhan da sua tay
+
+async def save_label(
+    item_id: str,
+    job_id: str | None,
+    procedure: str | None,
+    client_dossier_id: str | None,
+    fields: list[dict],
+    labeled_by: str | None,
+) -> dict:
+    """Luu nhan ket qua dung (do nguoi dung sua). Ghi de nhan cu cua cung ho so."""
+    db = get_db()
+    if db is None:
+        return {"saved": False, "reason": "Chua bat MongoDB nen khong luu duoc nhan."}
+    await db.labels.update_one(
+        {"itemId": item_id},
+        {
+            "$set": {
+                "jobId": job_id,
+                "procedure": procedure,
+                "clientDossierId": client_dossier_id,
+                "fields": fields,
+                "fieldCount": len(fields),
+                "labeledBy": labeled_by,
+                "labeledAt": _now(),
+            },
+            "$setOnInsert": {"itemId": item_id, "createdAt": _now()},
+        },
+        upsert=True,
+    )
+    return {"saved": True}
+
+
+async def get_label(item_id: str) -> dict | None:
+    db = get_db()
+    if db is None:
+        return None
+    doc = await db.labels.find_one({"itemId": item_id})
+    return _clean(doc) if doc else None
+
+
+async def label_stats() -> dict:
+    """Dem so nhan da gan va so ket qua boc tach theo tung thu tuc."""
+    db = get_db()
+    if db is None:
+        return {"enabled": False, "byProcedure": {}}
+    out: dict[str, dict] = {}
+    async for row in db.labels.aggregate([{"$group": {"_id": "$procedure", "n": {"$sum": 1}}}]):
+        out.setdefault(row["_id"] or "", {})["labels"] = row["n"]
+    async for row in db.results.aggregate([{"$group": {"_id": "$procedure", "n": {"$sum": 1}}}]):
+        out.setdefault(row["_id"] or "", {})["results"] = row["n"]
+    # Chuan hoa: thu tuc nao chi co mot trong hai van co du hai so
+    for v in out.values():
+        v.setdefault("labels", 0)
+        v.setdefault("results", 0)
+    return {"enabled": True, "byProcedure": out}
+
+
+async def list_labels(procedure: str, limit: int = 200) -> dict:
+    """Danh sach ho so da gan nhan cua mot thu tuc, moi ban cho biet co ket qua boc tach khong."""
+    db = get_db()
+    if db is None:
+        return {"enabled": False, "total": 0, "items": []}
+    cursor = db.labels.find({"procedure": procedure}).sort("labeledAt", -1).limit(limit)
+    labels = [_clean(doc) async for doc in cursor]
+    has_result = {r["itemId"] async for r in db.results.find({"procedure": procedure}, {"itemId": 1})}
+    items = [
+        {
+            "itemId": lb["itemId"],
+            "clientDossierId": lb.get("clientDossierId"),
+            "fieldCount": lb.get("fieldCount", 0),
+            "labeledBy": lb.get("labeledBy"),
+            "labeledAt": lb.get("labeledAt"),
+            "hasResult": lb["itemId"] in has_result,
+        }
+        for lb in labels
+    ]
+    return {"enabled": True, "total": len(items), "items": items}

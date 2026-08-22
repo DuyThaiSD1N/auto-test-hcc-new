@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { Procedure } from '../api/types'
+import type { LabelStats, Procedure } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 
 export default function ProceduresPage() {
@@ -14,6 +14,15 @@ export default function ProceduresPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  const [stats, setStats] = useState<LabelStats['byProcedure']>({})
+
+  // So nhan da gan theo tung thu tuc (thong ke)
+  useEffect(() => {
+    api
+      .labelStats()
+      .then((r) => setStats(r.byProcedure ?? {}))
+      .catch(() => setStats({}))
+  }, [])
 
   // Chong goi API lien tuc khi go phim
   useEffect(() => {
@@ -104,6 +113,11 @@ export default function ProceduresPage() {
                   >
                     <span className="radio" aria-hidden="true" />
                     <span className="procedure-label">{p.label}</span>
+                    {stats[p.key]?.labels ? (
+                      <span className="label-count" title="Số nhãn đã gán">
+                        {stats[p.key].labels} nhãn
+                      </span>
+                    ) : null}
                     {p.code && <span className="code-badge">{p.code}</span>}
                   </button>
                 </li>
@@ -130,6 +144,10 @@ export default function ProceduresPage() {
                   <dt>Tự động xác nhận</dt>
                   <dd>{selected.autoConfirm ? 'Có' : 'Không'}</dd>
                 </div>
+                <div>
+                  <dt>Nhãn đã gán</dt>
+                  <dd>{stats[selected.key]?.labels ?? 0}</dd>
+                </div>
               </dl>
               <a className="detail-link" href={selected.url} target="_blank" rel="noreferrer">
                 Mở trang thủ tục gốc ↗
@@ -140,6 +158,13 @@ export default function ProceduresPage() {
                 onClick={() => navigate(`/thu-tuc/${selected.key}`)}
               >
                 Bắt đầu thử nghiệm
+              </button>
+              <button
+                type="button"
+                className="ghost-btn full"
+                onClick={() => navigate(`/thu-tuc/${selected.key}/nhan`)}
+              >
+                Xem nhãn đã gán ({stats[selected.key]?.labels ?? 0})
               </button>
               <p className="hint">Tải hồ sơ lên để hệ thống bóc tách dữ liệu tự động.</p>
             </div>

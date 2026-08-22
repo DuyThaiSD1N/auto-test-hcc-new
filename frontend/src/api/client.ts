@@ -3,7 +3,12 @@ import type {
   BatchJob,
   BatchResult,
   BatchStatus,
+  BatchField,
   HistoryJobDetail,
+  HistoryResult,
+  LabelListResponse,
+  LabelStats,
+  LabelRecord,
   HistoryListResponse,
   LoginResponse,
   Procedure,
@@ -137,6 +142,31 @@ export const api = {
 
   deleteHistoryJob: (jobId: string) =>
     request<{ deleted: boolean }>(`/history/jobs/${jobId}`, { method: 'DELETE' }),
+
+  // ---- Thống kê nhãn + JSON bóc tách + nhãn kết quả đúng ----
+
+  labelStats: () => request<LabelStats>('/history/stats'),
+
+  labelsByProcedure: (procedure: string) =>
+    request<LabelListResponse>(`/history/labels?procedure=${encodeURIComponent(procedure)}`),
+
+  historyResult: (itemId: string) => request<HistoryResult>(`/history/items/${itemId}/result`),
+
+  getLabel: (itemId: string) => request<LabelRecord>(`/history/items/${itemId}/label`),
+
+  saveLabel: (
+    itemId: string,
+    body: {
+      fields: BatchField[]
+      jobId?: string | null
+      procedure?: string | null
+      clientDossierId?: string | null
+    },
+  ) =>
+    request<{ saved: boolean }>(`/history/items/${itemId}/label`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 }
 
 /**

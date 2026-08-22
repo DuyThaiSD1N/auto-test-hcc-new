@@ -21,6 +21,7 @@ def get_db() -> AsyncIOMotorDatabase | None:
     return _db
 
 
+
 async def connect() -> None:
     """Goi luc khoi dong ung dung. Khong ket noi duoc thi ghi canh bao roi chay tiep."""
     global _client, _db
@@ -64,3 +65,7 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.results.create_index("itemId", unique=True)
     await db.results.create_index("jobId")
     await db.results.create_index([("savedAt", -1)])
+    # Nhan da sua tay (ground truth)
+    await db.labels.create_index("itemId", unique=True)
+    await db.labels.create_index("jobId")
+    await db.labels.create_index("procedure")

@@ -77,7 +77,6 @@ export default function ScanPage() {
 
   const counter = useRef(1)
   const fileInput = useRef<HTMLInputElement>(null)
-  const splitInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     api
@@ -318,6 +317,9 @@ export default function ScanPage() {
           </div>
         </div>
         <div className="user-box">
+          <Link to="/lich-su" className="ghost-btn">
+            Lịch sử
+          </Link>
           <div className="user-info">
             <strong>{user?.full_name}</strong>
             <span>@{user?.username}</span>
@@ -332,9 +334,6 @@ export default function ScanPage() {
         <div className="eform-bar" style={{ padding: 0, border: 'none', background: 'none' }}>
           <Link to="/thu-tuc" className="back-link">
             ← Chọn thủ tục khác
-          </Link>
-          <Link to="/lich-su" className="back-link">
-            Lịch sử phiên quét →
           </Link>
         </div>
 
@@ -400,22 +399,8 @@ export default function ScanPage() {
                   e.target.value = ''
                 }}
               />
-              <input
-                ref={splitInput}
-                type="file"
-                multiple
-                accept={accepted.join(',')}
-                hidden
-                onChange={(e) => {
-                  addDossiers(e.target.files, true)
-                  e.target.value = ''
-                }}
-              />
               <button className="primary-btn inline" onClick={() => fileInput.current?.click()}>
                 + Thêm 1 hồ sơ (chọn nhiều file)
-              </button>
-              <button className="ghost-btn" onClick={() => splitInput.current?.click()}>
-                Mỗi file là một hồ sơ
               </button>
             </div>
           )}

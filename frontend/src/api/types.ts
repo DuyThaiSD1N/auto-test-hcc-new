@@ -143,3 +143,46 @@ export interface HistoryListResponse {
   items: HistoryJob[]
   enabled: boolean
 }
+
+// ---- File gốc + nhãn kết quả đúng ----
+
+export interface LabelRecord {
+  itemId: string
+  jobId: string | null
+  procedure: string | null
+  clientDossierId: string | null
+  fields: BatchField[]
+  fieldCount: number
+  labeledBy: string | null
+  labeledAt: string
+}
+
+export interface LabelStats {
+  enabled: boolean
+  byProcedure: Record<string, { labels: number; results: number }>
+}
+
+export interface LabelListItem {
+  itemId: string
+  clientDossierId: string | null
+  fieldCount: number
+  labeledBy: string | null
+  labeledAt: string
+  hasResult: boolean
+}
+
+export interface LabelListResponse {
+  enabled: boolean
+  total: number
+  items: LabelListItem[]
+}
+
+export interface HistoryResult {
+  itemId: string
+  jobId: string | null
+  procedure: string | null
+  clientDossierId: string | null
+  fieldCount: number
+  result: BatchResult['result']
+  savedAt: string
+}

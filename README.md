@@ -195,6 +195,52 @@ Backend kiểm tra trước khi gọi ra ngoài: định dạng file (JPG, PNG, 
 100MB mỗi hồ sơ, mã thủ tục phải có trong danh mục. Lỗi từ API bóc tách được dịch sang thông báo
 tiếng Việt (`INVALID_BATCH_SECRET`, `BATCH_QUEUE_FULL`, `FILE_TOO_LARGE`…).
 
+## Gán nhãn kết quả đúng
+
+Màn hình `/thu-tuc/{key}/eform?item={itemId}` để **xem và gán nhãn**:
+
+- **Trái:** chuyển giữa **Form đã điền** (eForm tự điền theo dữ liệu hiện tại) và **JSON bóc tách**
+  (kết quả thô từ pipeline).
+- **Phải:** danh sách trường **sửa được tại chỗ** (trường địa chỉ tách ô con Tỉnh/Xã/Địa chỉ).
+  Bấm **Lưu nhãn kết quả đúng** để lưu bản đã sửa vào MongoDB.
+
+Mở lại hồ sơ đã gán nhãn thì tự nạp bản đã sửa và hiện **● Đã gán nhãn**. Đây là ground-truth để
+sau này chấm điểm độ chính xác của bóc tách.
+
+**Không lưu file tài liệu gốc** (PDF/Word/ảnh) người dùng tải lên — chỉ lưu JSON bóc tách và nhãn.
+
+### Thống kê & xem theo thủ tục
+
+- Danh sách thủ tục hiện **số nhãn đã gán** trên mỗi thủ tục (badge "N nhãn").
+- Panel chi tiết có nút **Xem nhãn đã gán (N)** → trang `/thu-tuc/{key}/nhan` liệt kê các hồ sơ đã
+  gán nhãn; mỗi dòng bấm **Xem form + JSON** để mở lại màn hình trên.
+
+Nhãn lưu ở collection `labels` (khóa `itemId`, kèm người gán và thời điểm).
+
+| Method | Đường dẫn | Mô tả |
+|--------|-----------|-------|
+| GET | `/api/history/stats` | số nhãn + số kết quả theo từng thủ tục |
+| GET | `/api/history/labels?procedure=` | danh sách hồ sơ đã gán nhãn của thủ tục |
+| GET | `/api/history/items/{itemId}/result` | JSON bóc tách đã lưu |
+| GET | `/api/history/items/{itemId}/label` | nhãn đã lưu |
+| PUT | `/api/history/items/{itemId}/label` | lưu/cập nhật nhãn |
+
+## Dữ liệu tỉnh/thành & phường/xã
+
+eForm dùng đủ **34 tỉnh/thành + 3.321 phường/xã** (sắp xếp hành chính 2025), nạp từ
+[`frontend/public/eform/dia-ban.json`](frontend/public/eform/dia-ban.json). File này **sinh từ dữ liệu
+chuẩn của backend** (`app/locations/data/vn_provinces_wards.json`), không gõ tay:
+
+```bash
+python tools/gen-diaban.py
+```
+
+Dropdown Tỉnh/Xã trong eForm tải danh sách này lúc mở (mô phỏng AJAX như cổng thật). Tên dùng dạng
+đầy đủ ("Thành phố Hà Nội", "Phường Cam Đường") nên engine điền khớp được cả khi pipeline trả tên
+rút gọn (luật khớp *chứa*) lẫn tên đầy đủ (khớp *chính xác*).
+
+> Lưu ý: dữ liệu chuẩn có **34** đơn vị (28 tỉnh + 6 thành phố) theo sắp xếp 2025, không phải 36.
+
 ## Cơ sở dữ liệu (MongoDB)
 
 Mọi phiên quét và **JSON bóc tách** được lưu lại để tra cứu, đối chiếu về sau. Xem tại `/lich-su`.
@@ -315,6 +361,42 @@ Bản mock gốc lệch với cổng thật ở hai chỗ, đã sửa trong `fro
 | `PhuongThucNhanKQ` | `TrucTuyen/TrucTiep/BuuChinh` | `1` Trực tiếp · `2` Bưu chính · `3` Trực tuyến | `mapper.py` phát `"2"` |
 
 Thứ tự số của `PhuongThucNhanKQ` lấy theo cổng thật, nên `"2"` là **nhận qua bưu chính**.
+
+## Host cho mọi người qua ngrok (không cần secret batch)
+
+Hệ thống bóc tách (BE + OCR + LLM) chạy ở máy bạn, OCR/LLM là dịch vụ đám mây công khai.
+Cách này mở nguyên app ra Internet để người khác vào, **máy bạn phải bật**.
+
+### Bật link (kể cả sau khi khởi động lại máy)
+
+Bấm phải [`start-hosting.ps1`](start-hosting.ps1) → **Run with PowerShell**. Script sẽ:
+kiểm tra Docker (BE 12005, Mongo), build lại giao diện, bật backend (8000), mở ngrok và **in ra
+URL công khai** (đồng thời copy vào clipboard). Giữ cửa sổ đó mở thì link còn sống.
+
+> Lần đầu chạy script bị chặn thì mở PowerShell gõ một lần:
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+
+### Điều phải chấp nhận ở ngrok free
+
+- **URL đổi mỗi lần chạy lại** — gửi lại link mới cho mọi người sau mỗi lần khởi động.
+- Lần đầu mỗi người vào thấy trang cảnh báo ngrok → bấm **Visit Site**.
+- Máy bạn tắt / đóng cửa sổ ngrok = link chết.
+
+Muốn URL cố định và máy không phải bật: xem hai hướng còn lại (VPS hoặc Cloudflare Tunnel) —
+hỏi lại tôi khi cần.
+
+### Đổi mật khẩu trước khi gửi link (QUAN TRỌNG)
+
+Link công khai nên **đừng để `admin123`**. Tài khoản lưu trong MongoDB, quản lý bằng:
+
+```bash
+python tools/seed_user.py --username sep --password 'MatKhauManh@2026' --name 'Quản trị' --role admin
+python tools/seed_user.py --list
+python tools/seed_user.py --delete <username>
+```
+
+Riêng tài khoản `admin` đến từ biến môi trường (luôn dùng được để dự phòng): đổi mật khẩu bằng cách
+sửa `APP_DEFAULT_PASSWORD` trong `backend/.env` rồi khởi động lại backend.
 
 ## Hosting / Triển khai
 

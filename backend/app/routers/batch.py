@@ -217,9 +217,12 @@ async def upload_item(
     }
 
     try:
-        return await client.upload_item(job_id, metadata, payload, idempotency_key)
+        created = await client.upload_item(job_id, metadata, payload, idempotency_key)
     except BatchApiError as exc:
         raise _handle(exc) from exc
+
+    # Khong luu noi dung file goc (PDF/Word/anh) theo yeu cau - chi giu JSON boc tach + nhan.
+    return created
 
 
 @router.get("/items/{item_id}/result")
