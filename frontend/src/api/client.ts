@@ -44,7 +44,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   // Token cũ/hết hạn: dọn luôn rồi đưa về trang đăng nhập, tránh kẹt ở màn hình
   // gọi API nào cũng lỗi mà không hiểu vì sao. Không áp dụng cho chính lời gọi đăng nhập
   // (401 ở đó nghĩa là sai mật khẩu, phải hiện thông báo chứ không phải điều hướng).
-  if (res.status === 401 && token && !path.startsWith('/auth/login')) {
+  // CHỈ đăng xuất khi 401 đến từ lớp xác thực của chính ứng dụng — nhận ra bằng header
+  // WWW-Authenticate. Lỗi 401 do hệ thống bên ngoài (vd secret bóc tách sai) không được
+  // đá người dùng về trang đăng nhập.
+  const sessionExpired = res.status === 401 && res.headers.has('WWW-Authenticate')
+  if (sessionExpired && token && !path.startsWith('/auth/login')) {
     tokenStore.clear()
     if (window.location.pathname !== '/dang-nhap') {
       window.location.assign('/dang-nhap')

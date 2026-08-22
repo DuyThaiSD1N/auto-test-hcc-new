@@ -39,8 +39,22 @@ def get_client() -> ExtractionBackend:
 Client = Annotated[ExtractionBackend, Depends(get_client)]
 
 
+# Ma loi cua nguon boc tach ma KHONG duoc phep tra ve nguyen cho trinh duyet
+_UPSTREAM_AUTH = {401, 403}
+
+
 def _handle(exc: BatchApiError) -> HTTPException:
-    return HTTPException(status_code=exc.status_code, detail=exc.message)
+    """Doi ma loi cua nguon boc tach thanh ma phu hop de tra ve trinh duyet.
+
+    Quan trong: nguon boc tach tu choi secret (401/403) KHONG phai la phien dang nhap
+    cua nguoi dung het han. Neu tra ve 401 thi giao dien tuong nguoi dung het phien va
+    da ho ve trang dang nhap - dung luc dang quet ho so. Doi thanh 502 (loi phia sau).
+    """
+    status = 502 if exc.status_code in _UPSTREAM_AUTH else exc.status_code
+    detail = exc.message
+    if exc.status_code in _UPSTREAM_AUTH:
+        detail = f"{exc.message} Kiem tra lai cau hinh nguon boc tach tren may chu."
+    return HTTPException(status_code=status, detail=detail)
 
 
 @router.get("/status")
