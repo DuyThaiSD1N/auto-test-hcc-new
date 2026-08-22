@@ -64,6 +64,64 @@ Tài khoản hiện lưu trong bộ nhớ, sẽ thay bằng CSDL ở bước sau
 | GET | `/api/procedures?q=` | danh sách thủ tục, tìm theo tên/mã (không phân biệt dấu và hoa thường) |
 | GET | `/api/procedures/{key}` | chi tiết một thủ tục |
 
+## Bóc tách hồ sơ theo lô
+
+Giao diện `/thu-tuc/{key}` cho phép tải nhiều hồ sơ lên và gọi API bóc tách của Auto Fill HCC.
+
+**Secret không bao giờ ra tới trình duyệt.** Trình duyệt gọi `/api/batch/*` bằng JWT đăng nhập,
+FastAPI mới đính `Authorization: Bearer <BATCH_API_SECRET>` rồi gọi sang Auto Fill HCC.
+
+### Cấu hình
+
+Toàn bộ cấu hình nằm trong file `.env`, không cần truyền biến trên dòng lệnh:
+
+- `backend/.env` — khi chạy `uvicorn` từ thư mục `backend/`
+- `.env` ở thư mục gốc — khi chạy `docker compose`
+
+Cả hai file đã có trong `.gitignore` nên không bị đẩy lên git. Mẫu để copy: `backend/.env.example`
+và `.env.example`.
+
+| Biến | Mặc định | Ý nghĩa |
+|------|----------|---------|
+| `APP_BATCH_API_BASE_URL` | `https://trolyhoso-hcc-admin.vnekyc.vn` | địa chỉ API bóc tách |
+| `APP_BATCH_API_SECRET` | *(rỗng)* | secret do đội Auto Fill HCC cấp |
+
+**Sửa `.env` xong phải khởi động lại backend** — `--reload` chỉ theo dõi file `.py`, không theo dõi `.env`.
+
+Chưa đặt secret thì `/api/batch/status` trả `configured: false`, giao diện hiện cảnh báo
+và nút bắt đầu bị khóa — thay vì để người dùng bấm rồi gặp lỗi khó hiểu.
+
+### Luồng chạy
+
+1. Chọn thủ tục → **Bắt đầu thử nghiệm**.
+2. Thêm hồ sơ: một hồ sơ có thể gồm nhiều file (tờ khai, CCCD…), hoặc chọn *Mỗi file là một hồ sơ*.
+3. **Bắt đầu bóc tách** → tạo phiên → tải hồ sơ (song song 3 hồ sơ như tài liệu API khuyến nghị)
+   → start → tự poll mỗi 3 giây.
+4. Xong thì bấm *Xem kết quả* ở từng hồ sơ để xem các trường đã bóc tách; hồ sơ lỗi có nút *Chạy lại*.
+
+Mỗi lần tải dùng header `Idempotency-Key` dạng `{jobId}-{clientDossierId}`, nên nếu mạng timeout
+và gửi lại thì server nhận ra trùng, không tạo hồ sơ thừa.
+
+### Endpoint proxy
+
+| Method | Đường dẫn | Ghi chú |
+|--------|-----------|---------|
+| GET | `/api/batch/status` | đã cấu hình secret chưa |
+| POST | `/api/batch/jobs` | tạo phiên quét |
+| POST | `/api/batch/jobs/{jobId}/items` | tải một hồ sơ (multipart) |
+| POST | `/api/batch/jobs/{jobId}/start` | bắt đầu xử lý |
+| GET | `/api/batch/jobs/{jobId}` | tiến độ |
+| GET | `/api/batch/jobs/{jobId}/items` | danh sách hồ sơ, lọc `?status=failed` |
+| GET | `/api/batch/jobs/{jobId}/results` | kết quả các hồ sơ `done` |
+| GET | `/api/batch/items/{itemId}/result` | kết quả một hồ sơ |
+| POST | `/api/batch/items/{itemId}/retry` | chạy lại hồ sơ lỗi |
+| POST | `/api/batch/jobs/{jobId}/pause\|resume\|cancel` | tạm dừng / chạy tiếp / hủy |
+| DELETE | `/api/batch/jobs/{jobId}` | xóa phiên sau khi đã lưu kết quả |
+
+Backend kiểm tra trước khi gọi ra ngoài: định dạng file (JPG, PNG, PDF, DOCX), 80MB mỗi file,
+100MB mỗi hồ sơ, mã thủ tục phải có trong danh mục. Lỗi từ API bóc tách được dịch sang thông báo
+tiếng Việt (`INVALID_BATCH_SECRET`, `BATCH_QUEUE_FULL`, `FILE_TOO_LARGE`…).
+
 ## Hosting / Triển khai
 
 Khi build production, **FastAPI phục vụ luôn giao diện** (`frontend/dist`) trên cùng một cổng,

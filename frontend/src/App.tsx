@@ -3,6 +3,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import { AuthProvider } from './auth/AuthContext'
 import LoginPage from './pages/LoginPage'
 import ProceduresPage from './pages/ProceduresPage'
+import ScanPage from './pages/ScanPage'
 
 export default function App() {
   return (
@@ -15,6 +16,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ProceduresPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/thu-tuc/:key"
+            element={
+              <ProtectedRoute>
+                <ScanPage />
               </ProtectedRoute>
             }
           />

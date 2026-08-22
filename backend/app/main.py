@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .routers import auth, procedures
+from .routers import auth, batch, procedures
 
 logger = logging.getLogger("uvicorn.error")
 settings = get_settings()
@@ -20,6 +20,10 @@ async def lifespan(_: FastAPI):
     if settings.default_password == "admin123":
         logger.warning(
             "APP_DEFAULT_PASSWORD dang dung gia tri mac dinh - BAT BUOC doi khi deploy that."
+        )
+    if not settings.batch_api_configured:
+        logger.warning(
+            "Chua dat APP_BATCH_API_SECRET - chuc nang quet ho so se bao loi 503."
         )
     yield
 
@@ -36,6 +40,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(procedures.router)
+app.include_router(batch.router)
 
 
 @app.get("/api/health", tags=["system"])

@@ -23,3 +23,8 @@ services:
         value: Quan tri vien
       - key: APP_ACCESS_TOKEN_EXPIRE_MINUTES
         value: "480"
+      - key: APP_BATCH_API_BASE_URL
+        value: https://trolyhoso-hcc-admin.vnekyc.vn
+      # Secret goi API boc tach - nhap trong dashboard, khong luu vao git
+      - key: APP_BATCH_API_SECRET
+        sync: false

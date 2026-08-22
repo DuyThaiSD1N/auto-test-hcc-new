@@ -1,4 +1,13 @@
-import type { LoginResponse, ProcedureListResponse, User } from './types'
+import type {
+  BatchItem,
+  BatchJob,
+  BatchResult,
+  BatchStatus,
+  LoginResponse,
+  Procedure,
+  ProcedureListResponse,
+  User,
+} from './types'
 
 const TOKEN_KEY = 'hcc.access_token'
 
@@ -20,7 +29,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = tokenStore.get()
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
-  if (init.body) headers.set('Content-Type', 'application/json')
+  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
   let res: Response
@@ -57,4 +66,61 @@ export const api = {
     const qs = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''
     return request<ProcedureListResponse>(`/procedures${qs}`)
   },
+
+  procedure: (key: string) => request<Procedure>(`/procedures/${encodeURIComponent(key)}`),
+
+  // ---- API bóc tách hồ sơ theo lô ----
+
+  batchStatus: () => request<BatchStatus>('/batch/status'),
+
+  createJob: (name: string, procedure: string) =>
+    request<BatchJob>('/batch/jobs', {
+      method: 'POST',
+      body: JSON.stringify({ name, procedure }),
+    }),
+
+  uploadDossier: (
+    jobId: string,
+    clientDossierId: string,
+    files: File[],
+    hasHandwriting: boolean,
+  ) => {
+    const form = new FormData()
+    form.append('clientDossierId', clientDossierId)
+    form.append('hasHandwriting', String(hasHandwriting))
+    files.forEach((file) => form.append('files', file, file.name))
+    return request<BatchItem>(`/batch/jobs/${jobId}/items`, {
+      method: 'POST',
+      body: form,
+      // Gửi lại cùng khóa này khi timeout thì server nhận ra là trùng, không tạo hồ sơ mới
+      headers: { 'Idempotency-Key': `${jobId}-${clientDossierId}` },
+    })
+  },
+
+  startJob: (jobId: string) => request<BatchJob>(`/batch/jobs/${jobId}/start`, { method: 'POST' }),
+
+  getJob: (jobId: string) => request<BatchJob>(`/batch/jobs/${jobId}`),
+
+  cancelJob: (jobId: string) => request<BatchJob>(`/batch/jobs/${jobId}/cancel`, { method: 'POST' }),
+
+  jobItems: (jobId: string) =>
+    request<Envelope<BatchItem>>(`/batch/jobs/${jobId}/items?pageSize=200`).then(unwrap),
+
+  jobResults: (jobId: string) =>
+    request<Envelope<BatchResult>>(`/batch/jobs/${jobId}/results?pageSize=200`).then(unwrap),
+
+  itemResult: (itemId: string) => request<BatchResult>(`/batch/items/${itemId}/result`),
+
+  retryItem: (itemId: string) => request<BatchItem>(`/batch/items/${itemId}/retry`, { method: 'POST' }),
+}
+
+/**
+ * Tài liệu API không nói rõ tên trường bọc danh sách, nên chấp nhận cả
+ * `results`, `items` lẫn mảng trần để khỏi vỡ khi phía kia đổi cách trả về.
+ */
+type Envelope<T> = { results?: T[]; items?: T[] } | T[]
+
+function unwrap<T>(data: Envelope<T>): T[] {
+  if (Array.isArray(data)) return data
+  return data.results ?? data.items ?? []
 }

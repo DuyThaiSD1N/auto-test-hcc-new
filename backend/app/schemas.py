@@ -19,6 +19,11 @@ class LoginResponse(BaseModel):
     user: UserOut
 
 
+class CreateJobRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    procedure: str = Field(min_length=1, max_length=100)
+
+
 class Procedure(BaseModel):
     key: str
     code: str | None = None

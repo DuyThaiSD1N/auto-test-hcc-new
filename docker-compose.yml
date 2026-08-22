@@ -12,6 +12,8 @@ services:
       APP_DEFAULT_PASSWORD: ${APP_DEFAULT_PASSWORD:?can dat APP_DEFAULT_PASSWORD trong file .env}
       APP_DEFAULT_FULL_NAME: ${APP_DEFAULT_FULL_NAME:-Quan tri vien}
       APP_ACCESS_TOKEN_EXPIRE_MINUTES: ${APP_ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+      APP_BATCH_API_BASE_URL: ${APP_BATCH_API_BASE_URL:-https://trolyhoso-hcc-admin.vnekyc.vn}
+      APP_BATCH_API_SECRET: ${APP_BATCH_API_SECRET:-}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
       interval: 30s

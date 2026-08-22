@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Procedure } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 
 export default function ProceduresPage() {
   const { user, logout } = useAuth()
+  const navigate = useNavigate()
 
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
@@ -129,12 +131,14 @@ export default function ProceduresPage() {
               <a className="detail-link" href={selected.url} target="_blank" rel="noreferrer">
                 Mở trang thủ tục gốc ↗
               </a>
-              <button type="button" className="primary-btn" disabled>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => navigate(`/thu-tuc/${selected.key}`)}
+              >
                 Bắt đầu thử nghiệm
               </button>
-              <p className="hint">
-                Bước tải tài liệu và tự động điền sẽ được bổ sung ở giai đoạn tiếp theo.
-              </p>
+              <p className="hint">Tải hồ sơ lên để hệ thống bóc tách dữ liệu tự động.</p>
             </div>
           ) : (
             <div className="detail-card placeholder">
