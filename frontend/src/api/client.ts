@@ -41,6 +41,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new ApiError(0, 'Không kết nối được máy chủ. Kiểm tra backend đã chạy chưa.')
   }
 
+  // Token cũ/hết hạn: dọn luôn rồi đưa về trang đăng nhập, tránh kẹt ở màn hình
+  // gọi API nào cũng lỗi mà không hiểu vì sao. Không áp dụng cho chính lời gọi đăng nhập
+  // (401 ở đó nghĩa là sai mật khẩu, phải hiện thông báo chứ không phải điều hướng).
+  if (res.status === 401 && token && !path.startsWith('/auth/login')) {
+    tokenStore.clear()
+    if (window.location.pathname !== '/dang-nhap') {
+      window.location.assign('/dang-nhap')
+    }
+  }
+
   if (!res.ok) {
     let detail = `Lỗi ${res.status}`
     try {

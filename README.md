@@ -375,8 +375,37 @@ git push -u origin main
 Render đọc `render.yaml`, hỏi giá trị `APP_DEFAULT_PASSWORD` (mật khẩu đăng nhập bạn muốn dùng),
 `APP_SECRET_KEY` để Render tự sinh ngẫu nhiên.
 
+Muốn khai một lượt tất cả biến: mở [`.env.example`](.env.example), điền giá trị, rồi vào
+service → **Environment** → **Add from .env** và dán cả file. Nếu trình nhập không chịu dòng chú
+thích thì lọc bớt:
+
+```bash
+grep -v '^#' .env.example | grep -v '^$'
+```
+
 **Bước 3.** Bấm **Apply**. Lần build đầu mất khoảng 5–10 phút (build cả Vite lẫn Python).
-Xong sẽ có địa chỉ dạng `https://auto-test-hcc.onrender.com` — đăng nhập bằng `admin` và mật khẩu đã nhập.
+Xong sẽ có địa chỉ dạng `https://auto-test-hcc.onrender.com` — đăng nhập bằng `admin` và **mật khẩu
+đã nhập ở bước 2**, không phải `admin123` của máy cá nhân.
+
+> **Đăng nhập trên bản deploy bị 401?** Mỗi nơi chạy có một mật khẩu admin riêng: máy cá nhân lấy từ
+> `backend/.env`, Docker Compose lấy từ `.env` gốc, Render lấy từ biến `APP_DEFAULT_PASSWORD` trong
+> dashboard. Vào Render → service → **Environment** để xem hoặc đặt lại (Save changes là tự deploy lại).
+
+**Kiểm tra nhanh một bản đã deploy** — không cần đăng nhập:
+
+```bash
+curl https://<ten-service>.onrender.com/api/health
+```
+
+```json
+{"status":"ok","database":true,
+ "extraction":{"provider":"batch","configured":true},
+ "defaultAccountEnabled":true}
+```
+
+`database: false` = chưa đặt `APP_MONGO_URI` (không có lịch sử, không lưu được tài khoản).
+`extraction.configured: false` = chưa có secret/tài khoản cho nguồn bóc tách.
+Log của service ghi rõ lý do mỗi lần đăng nhập hỏng (sai mật khẩu hay không có tài khoản), không kèm mật khẩu.
 
 Không dùng Blueprint cũng được: **New → Web Service** → chọn repo → Language **Docker** →
 tự thêm các biến `APP_*` → Health check path `/api/health`.

@@ -50,7 +50,21 @@ app.include_router(history.router)
 
 @app.get("/api/health", tags=["system"])
 def health() -> dict:
-    return {"status": "ok", "app": settings.app_name}
+    """Tinh trang cau hinh, khong kem thong tin nhay cam.
+
+    Dung de kiem tra nhanh mot ban da deploy: co CSDL chua, nguon boc tach da cau hinh chua,
+    ma khong can dang nhap (dang nhap duoc hay khong lai chinh la thu can chan doan).
+    """
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "database": db.get_db() is not None,
+        "extraction": {
+            "provider": "internal" if settings.use_internal_backend else "batch",
+            "configured": settings.extraction_configured,
+        },
+        "defaultAccountEnabled": bool(settings.default_password),
+    }
 
 
 # ---------------------------------------------------------------------------

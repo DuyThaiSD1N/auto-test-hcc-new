@@ -56,6 +56,16 @@ async def get_user(username: str) -> dict | None:
 
 async def authenticate(username: str, password: str) -> dict | None:
     user = await get_user(username)
-    if user is None or not verify_password(password, user["password_hash"]):
+    if user is None:
+        # Ghi ro de khi deploy con biet duong lan: khong co tai khoan nay o dau ca
+        logger.info(
+            "Dang nhap that bai: khong tim thay tai khoan '%s' (Mongo: %s, tai khoan mac dinh: '%s')",
+            (username or "").strip().lower(),
+            "co" if get_db() is not None else "khong bat",
+            get_settings().default_username.strip().lower(),
+        )
+        return None
+    if not verify_password(password, user["password_hash"]):
+        logger.info("Dang nhap that bai: sai mat khau cho '%s' (nguon: %s)", user["username"], user["source"])
         return None
     return user
