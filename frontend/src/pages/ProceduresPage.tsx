@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Procedure } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -58,6 +58,9 @@ export default function ProceduresPage() {
           </div>
         </div>
         <div className="user-box">
+          <Link to="/lich-su" className="ghost-btn">
+            Lịch sử
+          </Link>
           <div className="user-info">
             <strong>{user?.full_name}</strong>
             <span>@{user?.username}</span>

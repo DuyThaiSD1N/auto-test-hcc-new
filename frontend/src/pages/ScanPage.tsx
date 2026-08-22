@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { eformUrl } from '../eform/registry'
 import { api } from '../api/client'
+import { displayFieldValue } from '../api/fieldValue'
 import type { BatchItem, BatchJob, BatchResult, ItemStatus, Procedure } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 
@@ -16,8 +18,8 @@ interface Dossier {
   error?: string | null
 }
 
-const ACCEPT = '.pdf,.jpg,.jpeg,.png,.docx'
-const ALLOWED = ['.pdf', '.jpg', '.jpeg', '.png', '.docx']
+// Dự phòng khi chưa hỏi được backend; danh sách thật lấy từ /api/batch/status
+const FALLBACK_SUFFIXES = ['.pdf', '.jpg', '.jpeg', '.png', '.docx']
 const MAX_FILE = 80 * 1024 * 1024
 const MAX_DOSSIER = 100 * 1024 * 1024
 const UPLOAD_CONCURRENCY = 3
@@ -61,6 +63,8 @@ export default function ScanPage() {
 
   const [procedure, setProcedure] = useState<Procedure | null>(null)
   const [batchReady, setBatchReady] = useState<boolean | null>(null)
+  const [provider, setProvider] = useState<string | null>(null)
+  const [accepted, setAccepted] = useState<string[]>(FALLBACK_SUFFIXES)
   const [jobName, setJobName] = useState('')
   const [dossiers, setDossiers] = useState<Dossier[]>([])
   const [phase, setPhase] = useState<Phase>('chuan-bi')
@@ -68,6 +72,8 @@ export default function ScanPage() {
   const [results, setResults] = useState<Record<string, BatchResult>>({})
   const [expanded, setExpanded] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const hasEform = Boolean(eformUrl(key))
 
   const counter = useRef(1)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -84,7 +90,11 @@ export default function ScanPage() {
 
     api
       .batchStatus()
-      .then((s) => setBatchReady(s.configured))
+      .then((s) => {
+        setBatchReady(s.configured)
+        setProvider(s.provider)
+        if (s.acceptedSuffixes?.length) setAccepted(s.acceptedSuffixes)
+      })
       .catch(() => setBatchReady(false))
   }, [key, navigate])
 
@@ -95,18 +105,19 @@ export default function ScanPage() {
     const picked = Array.from(fileList)
 
     const rejected = picked.filter(
-      (f) => !ALLOWED.some((ext) => f.name.toLowerCase().endsWith(ext)) || f.size > MAX_FILE,
+      (f) => !accepted.some((ext) => f.name.toLowerCase().endsWith(ext)) || f.size > MAX_FILE,
     )
     if (rejected.length) {
       setError(
-        `Bỏ qua ${rejected.length} file không hợp lệ (chỉ nhận JPG, PNG, PDF, DOCX dưới 80MB): ` +
+        `Bỏ qua ${rejected.length} file không nhận được (chấp nhận ${accepted.join(', ')}, ` +
+          `mỗi file dưới 80MB): ` +
           rejected.map((f) => f.name).join(', '),
       )
     }
-    const accepted = picked.filter((f) => !rejected.includes(f))
-    if (!accepted.length) return
+    const usable = picked.filter((f) => !rejected.includes(f))
+    if (!usable.length) return
 
-    const groups = splitEach ? accepted.map((f) => [f]) : [accepted]
+    const groups = splitEach ? usable.map((f) => [f]) : [usable]
     const created: Dossier[] = []
 
     for (const files of groups) {
@@ -126,7 +137,7 @@ export default function ScanPage() {
       })
     }
     setDossiers((prev) => [...prev, ...created])
-  }, [])
+  }, [accepted])
 
   const patchDossier = useCallback(
     (uid: string, patch: Partial<Dossier>) =>
@@ -318,14 +329,28 @@ export default function ScanPage() {
       </header>
 
       <main className="content single">
-        <Link to="/thu-tuc" className="back-link">
-          ← Chọn thủ tục khác
-        </Link>
+        <div className="eform-bar" style={{ padding: 0, border: 'none', background: 'none' }}>
+          <Link to="/thu-tuc" className="back-link">
+            ← Chọn thủ tục khác
+          </Link>
+          <Link to="/lich-su" className="back-link">
+            Lịch sử phiên quét →
+          </Link>
+        </div>
 
         {batchReady === false && (
           <div className="alert warn">
-            Máy chủ chưa cấu hình <code>APP_BATCH_API_SECRET</code> nên chưa gọi được API bóc tách.
-            Thêm biến môi trường này rồi khởi động lại backend.
+            {provider === 'internal' ? (
+              <>
+                Máy chủ chưa cấu hình tài khoản BE nội bộ (<code>APP_INTERNAL_USERNAME</code> /{' '}
+                <code>APP_INTERNAL_PASSWORD</code>).
+              </>
+            ) : (
+              <>
+                Máy chủ chưa cấu hình <code>APP_BATCH_API_SECRET</code> nên chưa gọi được API bóc tách.
+              </>
+            )}{' '}
+            Thêm biến môi trường rồi khởi động lại backend.
           </div>
         )}
 
@@ -368,7 +393,7 @@ export default function ScanPage() {
                 ref={fileInput}
                 type="file"
                 multiple
-                accept={ACCEPT}
+                accept={accepted.join(',')}
                 hidden
                 onChange={(e) => {
                   addDossiers(e.target.files, false)
@@ -379,7 +404,7 @@ export default function ScanPage() {
                 ref={splitInput}
                 type="file"
                 multiple
-                accept={ACCEPT}
+                accept={accepted.join(',')}
                 hidden
                 onChange={(e) => {
                   addDossiers(e.target.files, true)
@@ -398,6 +423,10 @@ export default function ScanPage() {
           {!dossiers.length ? (
             <div className="empty">
               Chưa có hồ sơ nào. Một hồ sơ có thể gồm nhiều file (tờ khai, CCCD…).
+              <div className="muted-small" style={{ marginTop: 6 }}>
+                Nhận {accepted.join(', ')} — ảnh lạ và tài liệu Word cũ được tự chuyển đổi trước khi
+                bóc tách.
+              </div>
             </div>
           ) : (
             <div className="table-scroll">
@@ -470,6 +499,14 @@ export default function ScanPage() {
                                 {isOpen ? 'Ẩn' : 'Xem kết quả'}
                               </button>
                             )}
+                            {result && hasEform && d.itemId && (
+                              <button
+                                className="ghost-btn"
+                                onClick={() => navigate(`/thu-tuc/${key}/eform?item=${d.itemId}`)}
+                              >
+                                Mở eForm
+                              </button>
+                            )}
                             {d.status === 'failed' && d.itemId && (
                               <button className="ghost-btn" onClick={() => retry(d)}>
                                 Chạy lại
@@ -489,7 +526,7 @@ export default function ScanPage() {
                                 {result.result.fields.map((f, i) => (
                                   <div className="field-row" key={`${f.name}-${i}`}>
                                     <span className="field-name">{f.name}</span>
-                                    <span className="field-value">{f.value ?? '—'}</span>
+                                    <span className="field-value">{displayFieldValue(f.value)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -508,7 +545,15 @@ export default function ScanPage() {
         <section className="panel">
           <div className="panel-head">
             <h2>3. Chạy bóc tách</h2>
-            {job && <span className="counter">Trạng thái: {job.status}</span>}
+            {job ? (
+              <span className="counter">Trạng thái: {job.status}</span>
+            ) : (
+              provider && (
+                <span className="counter">
+                  Nguồn bóc tách: {provider === 'internal' ? 'BE nội bộ' : 'API theo lô'}
+                </span>
+              )
+            )}
           </div>
 
           {phase !== 'chuan-bi' && counts && (
@@ -527,6 +572,11 @@ export default function ScanPage() {
           )}
 
           <div className="run-actions">
+            {hasEform && (
+              <button className="ghost-btn" onClick={() => navigate(`/thu-tuc/${key}/eform`)}>
+                Xem eForm của thủ tục
+              </button>
+            )}
             {phase === 'chuan-bi' && (
               <button
                 className="primary-btn inline"

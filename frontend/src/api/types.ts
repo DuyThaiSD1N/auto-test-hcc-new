@@ -75,9 +75,12 @@ export interface BatchItem {
 export interface BatchField {
   name: string
   comp: string | null
-  value: string | null
-  default: boolean
-  occurrence: number | null
+  // x-select-area nhận object {quocGia, tinh, xa, diaChi}; các comp khác là chuỗi
+  value: string | Record<string, unknown> | null
+  default?: boolean
+  occurrence?: number | null
+  // mapper của pipeline gắn thêm tên thay thế cho một số field
+  aliases?: string[]
 }
 
 export interface BatchResult {
@@ -96,5 +99,47 @@ export interface BatchResult {
 
 export interface BatchStatus {
   configured: boolean
+  /** "batch" = API theo lô của Auto Fill HCC; "internal" = BE nội bộ */
+  provider: 'batch' | 'internal'
   baseUrl: string
+  /** Đuôi file backend nhận, gồm cả loại được tự chuyển đổi */
+  acceptedSuffixes: string[]
+}
+
+// ---- Lịch sử lưu trong MongoDB ----
+
+export interface HistoryJob {
+  jobId: string
+  name: string | null
+  procedure: string | null
+  provider: 'batch' | 'internal' | string
+  status: string
+  counts: BatchCounts
+  createdAt: string | null
+  startedAt: string | null
+  finishedAt: string | null
+  savedAt: string
+}
+
+export interface HistoryItem {
+  itemId: string
+  jobId: string
+  procedure: string | null
+  clientDossierId: string
+  status: string
+  error: string | null
+  fileCount: number | null
+  totalBytes: number | null
+  files?: { name: string; type: string; bytes: number }[]
+  hasResult: boolean
+}
+
+export interface HistoryJobDetail extends HistoryJob {
+  items: HistoryItem[]
+}
+
+export interface HistoryListResponse {
+  total: number
+  items: HistoryJob[]
+  enabled: boolean
 }

@@ -3,6 +3,8 @@ import type {
   BatchJob,
   BatchResult,
   BatchStatus,
+  HistoryJobDetail,
+  HistoryListResponse,
   LoginResponse,
   Procedure,
   ProcedureListResponse,
@@ -112,6 +114,15 @@ export const api = {
   itemResult: (itemId: string) => request<BatchResult>(`/batch/items/${itemId}/result`),
 
   retryItem: (itemId: string) => request<BatchItem>(`/batch/items/${itemId}/retry`, { method: 'POST' }),
+
+  // ---- Lịch sử đã lưu trong MongoDB ----
+
+  historyJobs: (limit = 50) => request<HistoryListResponse>(`/history/jobs?limit=${limit}`),
+
+  historyJob: (jobId: string) => request<HistoryJobDetail>(`/history/jobs/${jobId}`),
+
+  deleteHistoryJob: (jobId: string) =>
+    request<{ deleted: boolean }>(`/history/jobs/${jobId}`, { method: 'DELETE' }),
 }
 
 /**

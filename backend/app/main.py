@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import db
 from .config import get_settings
-from .routers import auth, batch, procedures
+from .routers import auth, batch, history, procedures
 
 logger = logging.getLogger("uvicorn.error")
 settings = get_settings()
@@ -21,11 +22,14 @@ async def lifespan(_: FastAPI):
         logger.warning(
             "APP_DEFAULT_PASSWORD dang dung gia tri mac dinh - BAT BUOC doi khi deploy that."
         )
-    if not settings.batch_api_configured:
+    if not settings.extraction_configured:
         logger.warning(
-            "Chua dat APP_BATCH_API_SECRET - chuc nang quet ho so se bao loi 503."
+            "Chua cau hinh nguon boc tach (%s) - chuc nang quet ho so se bao loi 503.",
+            settings.extract_provider,
         )
+    await db.connect()
     yield
+    await db.disconnect()
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
@@ -41,6 +45,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(procedures.router)
 app.include_router(batch.router)
+app.include_router(history.router)
 
 
 @app.get("/api/health", tags=["system"])

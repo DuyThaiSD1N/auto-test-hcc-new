@@ -3,9 +3,7 @@ import unicodedata
 from functools import lru_cache
 from pathlib import Path
 
-from .config import get_settings
 from .schemas import Procedure
-from .security import hash_password
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -36,27 +34,3 @@ def search_procedures(query: str | None) -> list[Procedure]:
 
 def get_procedure(key: str) -> Procedure | None:
     return next((p for p in load_procedures() if p.key == key), None)
-
-
-class UserStore:
-    """Kho tai khoan tam thoi luu trong bo nho - se thay bang DB o buoc sau."""
-
-    def __init__(self) -> None:
-        settings = get_settings()
-        username = settings.default_username.strip().lower()
-        self._users: dict[str, dict] = {
-            username: {
-                "username": username,
-                "full_name": settings.default_full_name,
-                "role": "admin",
-                "password_hash": hash_password(settings.default_password),
-            }
-        }
-
-    def get(self, username: str) -> dict | None:
-        return self._users.get(username.strip().lower())
-
-
-@lru_cache
-def get_user_store() -> UserStore:
-    return UserStore()

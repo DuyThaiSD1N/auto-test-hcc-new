@@ -28,3 +28,18 @@ services:
       # Secret goi API boc tach - nhap trong dashboard, khong luu vao git
       - key: APP_BATCH_API_SECRET
         sync: false
+      # Nguon boc tach: batch (mac dinh) hoac internal (BE noi bo phai truy cap duoc tu Render)
+      - key: APP_EXTRACT_PROVIDER
+        value: batch
+      - key: APP_INTERNAL_API_BASE_URL
+        sync: false
+      - key: APP_INTERNAL_USERNAME
+        sync: false
+      - key: APP_INTERNAL_PASSWORD
+        sync: false
+      # Render khong co MongoDB dung san: dung chuoi ket noi ben ngoai (vd MongoDB Atlas).
+      # De trong thi ung dung van chay, chi khong luu lich su.
+      - key: APP_MONGO_URI
+        sync: false
+      - key: APP_MONGO_DB
+        value: auto_test_hcc

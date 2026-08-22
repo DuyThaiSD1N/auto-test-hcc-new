@@ -1,0 +1,193 @@
+[
+ {
+  "name": "HoVaTenC",
+  "comp": "x-input",
+  "value": "NGUYỄN THỊ MAI",
+  "aliases": [
+   "NYC_HoVaTen"
+  ]
+ },
+ {
+  "name": "SoDinhDanhC",
+  "comp": "x-input",
+  "value": "001187012345",
+  "aliases": [
+   "NYC_SoDinhDanh"
+  ]
+ },
+ {
+  "name": "LoaiGiayToDinhDanhC",
+  "comp": "x-select",
+  "value": "Căn cước công dân",
+  "aliases": [
+   "NYC_LoaiGiayToTuyThan"
+  ]
+ },
+ {
+  "name": "NYC_SoGiayToTuyThan",
+  "comp": "raw",
+  "value": "001187012345",
+  "aliases": [
+   "SoGiayToDinhDanhC"
+  ]
+ },
+ {
+  "name": "NgayCapDDC",
+  "comp": "x-date",
+  "value": "12/05/2021",
+  "aliases": [
+   "NYC_NgayCap"
+  ]
+ },
+ {
+  "name": "NoiCapDDC",
+  "comp": "x-input",
+  "value": "Cục Cảnh sát quản lý hành chính về trật tự xã hội",
+  "aliases": [
+   "NYC_NoiCap"
+  ]
+ },
+ {
+  "name": "NYC_LoaiCuTru",
+  "comp": "x-select",
+  "value": "Thường trú",
+  "default": true
+ },
+ {
+  "name": "NYC_NoiCuTru",
+  "comp": "x-radio",
+  "value": "1"
+ },
+ {
+  "name": "NYC_NoiCuTru_TrongNuoc",
+  "comp": "x-select-area",
+  "value": {
+   "quocGia": "Việt Nam",
+   "tinh": "Lào Cai",
+   "xa": "Phường Lào Cai",
+   "diaChi": "Tổ 5, đường Hoàng Liên"
+  }
+ },
+ {
+  "name": "NDK_HoVaTen",
+  "comp": "x-input",
+  "value": "NGUYỄN MINH KHÔI"
+ },
+ {
+  "name": "NDK_NgaySinh",
+  "comp": "x-date-text",
+  "value": "03/07/2018"
+ },
+ {
+  "name": "NDK_GioiTinh",
+  "comp": "x-select",
+  "value": "Nam"
+ },
+ {
+  "name": "NDK_DanToc",
+  "comp": "x-select",
+  "value": "Khác"
+ },
+ {
+  "name": "NDK_DanTocKhac",
+  "comp": "x-select-area",
+  "value": "Chăm"
+ },
+ {
+  "name": "NDK_QuocTich",
+  "comp": "x-select",
+  "value": "Việt Nam",
+  "default": true
+ },
+ {
+  "name": "NDK_SoDinhDanh",
+  "comp": "x-input",
+  "value": "001218054321"
+ },
+ {
+  "name": "NDK_LoaiGiayToTuyThan",
+  "comp": "x-select",
+  "value": "Căn cước công dân"
+ },
+ {
+  "name": "NDK_SoGiayToTuyThan",
+  "comp": "x-input",
+  "value": "001218054321"
+ },
+ {
+  "name": "NDK_NgayCap",
+  "comp": "x-date",
+  "value": "20/08/2024"
+ },
+ {
+  "name": "NDK_NoiCap",
+  "comp": "x-input",
+  "value": "Bộ Công an"
+ },
+ {
+  "name": "NDK_LoaiCuTru",
+  "comp": "x-select",
+  "value": "Thường trú",
+  "default": true
+ },
+ {
+  "name": "NDK_NoiCuTru",
+  "comp": "x-radio",
+  "value": "1"
+ },
+ {
+  "name": "NDK_NoiCuTru_TrongNuoc",
+  "comp": "x-select-area",
+  "value": {
+   "quocGia": "Việt Nam",
+   "tinh": "Lào Cai",
+   "xa": "Phường Cam Đường",
+   "diaChi": "Thôn Bình Minh"
+  }
+ },
+ {
+  "name": "HoSo_LoaiYeuCau",
+  "comp": "x-select",
+  "value": "Giấy khai sinh bản sao/Trích lục ghi vào Sổ hộ tịch việc khai sinh (bản sao)"
+ },
+ {
+  "name": "HoSo_CoQuanDangKy",
+  "comp": "x-input",
+  "value": "Ủy ban nhân dân phường Lào Cai, tỉnh Lào Cai"
+ },
+ {
+  "name": "HoSo_TenGiayTo",
+  "comp": "x-input",
+  "value": "Giấy khai sinh"
+ },
+ {
+  "name": "HoSo_So",
+  "comp": "x-input",
+  "value": "123/2018"
+ },
+ {
+  "name": "HoSo_QuyenSo",
+  "comp": "x-input",
+  "value": "01/2018"
+ },
+ {
+  "name": "HoSo_NgayCapSo",
+  "comp": "x-date",
+  "value": "10/07/2018"
+ },
+ {
+  "name": "PhuongThucNhanKQ",
+  "comp": "x-radio",
+  "value": "2"
+ },
+ {
+  "name": "NYC_QuanHe",
+  "comp": "x-radio",
+  "value": "Mẹ đẻ"
+ },
+ {
+  "name": "SoLuong",
+  "comp": "raw",
+  "value": "3"
+ }
+]

@@ -699,3 +699,85 @@ input {
   text-align: right;
   overflow-wrap: anywhere;
 }
+
+/* ---------- Trang eForm ---------- */
+
+.eform-bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.eform-empty {
+  margin: 24px;
+}
+
+.eform-split {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 0;
+  min-height: 0;
+}
+
+.eform-frame {
+  width: 100%;
+  height: calc(100vh - 116px);
+  border: none;
+  background: #eef1f5;
+}
+
+.eform-side {
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  height: calc(100vh - 116px);
+}
+
+.eform-side h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.eform-side .hint {
+  text-align: left;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+
+@media (max-width: 900px) {
+  .eform-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .eform-frame,
+  .eform-side {
+    height: auto;
+  }
+
+  .eform-frame {
+    height: 70vh;
+  }
+}
+
+.alert.ok {
+  background: #e6f6ec;
+  border: 1px solid #b7e0c6;
+  color: #176b36;
+}
+
+.dossier-table tr.row-open td {
+  background: var(--primary-soft);
+}
+
+.user-box .ghost-btn {
+  text-decoration: none;
+}

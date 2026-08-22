@@ -3,6 +3,8 @@ import ProtectedRoute from './components/ProtectedRoute'
 import { AuthProvider } from './auth/AuthContext'
 import LoginPage from './pages/LoginPage'
 import ProceduresPage from './pages/ProceduresPage'
+import EformPage from './pages/EformPage'
+import HistoryPage from './pages/HistoryPage'
 import ScanPage from './pages/ScanPage'
 
 export default function App() {
@@ -24,6 +26,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <ScanPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/thu-tuc/:key/eform"
+            element={
+              <ProtectedRoute>
+                <EformPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/lich-su"
+            element={
+              <ProtectedRoute>
+                <HistoryPage />
               </ProtectedRoute>
             }
           />

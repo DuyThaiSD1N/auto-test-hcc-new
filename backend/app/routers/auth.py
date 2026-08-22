@@ -2,16 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..deps import get_current_user
 from ..schemas import LoginRequest, LoginResponse, UserOut
-from ..security import create_access_token, verify_password
-from ..store import get_user_store
+from ..security import create_access_token
+from ..users import authenticate
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest) -> LoginResponse:
-    user = get_user_store().get(payload.username)
-    if user is None or not verify_password(payload.password, user["password_hash"]):
+async def login(payload: LoginRequest) -> LoginResponse:
+    user = await authenticate(payload.username, payload.password)
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Tai khoan hoac mat khau khong dung",

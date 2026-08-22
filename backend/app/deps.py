@@ -4,7 +4,7 @@ from jwt import PyJWTError
 
 from .schemas import UserOut
 from .security import decode_access_token
-from .store import get_user_store
+from .users import get_user
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -15,7 +15,7 @@ _UNAUTHORIZED = HTTPException(
 )
 
 
-def get_current_user(
+async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> UserOut:
     if credentials is None:
@@ -25,7 +25,7 @@ def get_current_user(
     except PyJWTError:
         raise _UNAUTHORIZED from None
 
-    user = get_user_store().get(payload.get("sub", ""))
+    user = await get_user(payload.get("sub", ""))
     if user is None:
         raise _UNAUTHORIZED
     return UserOut(username=user["username"], full_name=user["full_name"], role=user["role"])

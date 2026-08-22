@@ -10,10 +10,14 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
-from ..batch_client import BatchApiError, BatchClient
+from .. import history
+from ..batch_client import BatchApiError
+from ..extraction import ExtractionBackend, get_backend
 from ..config import get_settings
 from ..deps import get_current_user
+from ..files import ACCEPTED_SUFFIXES, UnsupportedFile, prepare_file
 from ..schemas import CreateJobRequest, UserOut
 from ..store import get_procedure
 
@@ -21,27 +25,18 @@ logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(prefix="/api/batch", tags=["batch"])
 
-# Theo tai lieu API: chi ho tro JPG, PNG, PDF, DOCX
-ALLOWED_TYPES = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".pdf": "application/pdf",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-}
-
 CurrentUser = Annotated[UserOut, Depends(get_current_user)]
 
 
-def get_client() -> BatchClient:
-    """Tao client; neu chua cau hinh secret thi tra loi 503 co huong dan."""
+def get_client() -> ExtractionBackend:
+    """Lay nguon boc tach dang cau hinh; chua cau hinh thi tra 503 kem huong dan."""
     try:
-        return BatchClient()
+        return get_backend()
     except BatchApiError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
 
 
-Client = Annotated[BatchClient, Depends(get_client)]
+Client = Annotated[ExtractionBackend, Depends(get_client)]
 
 
 def _handle(exc: BatchApiError) -> HTTPException:
@@ -53,8 +48,10 @@ async def batch_status(_: CurrentUser) -> dict:
     """Cho giao dien biet may chu da cau hinh secret goi API boc tach hay chua."""
     settings = get_settings()
     return {
-        "configured": settings.batch_api_configured,
-        "baseUrl": settings.batch_api_base_url,
+        "configured": settings.extraction_configured,
+        "provider": "internal" if settings.use_internal_backend else "batch",
+        "baseUrl": settings.extraction_base_url,
+        "acceptedSuffixes": sorted(ACCEPTED_SUFFIXES),
     }
 
 
@@ -120,9 +117,16 @@ async def list_results(
     page_size: int = Query(default=100, ge=1, le=200, alias="pageSize"),
 ) -> dict:
     try:
-        return await client.list_results(job_id, page, page_size)
+        data = await client.list_results(job_id, page, page_size)
     except BatchApiError as exc:
         raise _handle(exc) from exc
+
+    # Nguon "batch" xu ly o may khac nen luu lai ngay khi lay duoc ket qua.
+    # Nguon "internal" da tu luu luc xu ly xong; save_result la upsert nen goi lai vo hai.
+    results = data.get("results") or data.get("items") or []
+    if isinstance(results, list):
+        await history.save_results_page(job_id, results, None)
+    return data
 
 
 # -------------------------------------------------------------------- ho so
@@ -157,22 +161,22 @@ async def upload_item(
     total = 0
 
     for upload in files:
-        name = Path(upload.filename or "khong-ten").name
-        suffix = Path(name).suffix.lower()
-        if suffix not in ALLOWED_TYPES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File '{name}' khong duoc ho tro. Chi nhan JPG, PNG, PDF, DOCX.",
-            )
-
-        content = await upload.read()
-        if len(content) == 0:
-            raise HTTPException(status_code=400, detail=f"File '{name}' rong.")
-        if len(content) > settings.max_file_bytes:
+        raw_name = Path(upload.filename or "khong-ten").name
+        raw = await upload.read()
+        if len(raw) == 0:
+            raise HTTPException(status_code=400, detail=f"File '{raw_name}' rong.")
+        if len(raw) > settings.max_file_bytes:
             raise HTTPException(
                 status_code=413,
-                detail=f"File '{name}' vuot qua {settings.max_file_bytes // 1024 // 1024}MB.",
+                detail=f"File '{raw_name}' vuot qua {settings.max_file_bytes // 1024 // 1024}MB.",
             )
+
+        # Chuyen doi neu can (WEBP/BMP/GIF/TIFF -> JPEG, DOC/RTF/ODT -> PDF).
+        # Chay trong thread rieng vi Pillow/LibreOffice deu chan luong.
+        try:
+            name, content, content_type = await run_in_threadpool(prepare_file, raw_name, raw)
+        except UnsupportedFile as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         total += len(content)
         if total > settings.max_item_bytes:
@@ -181,8 +185,6 @@ async def upload_item(
                 detail=f"Tong dung luong ho so vuot qua {settings.max_item_bytes // 1024 // 1024}MB.",
             )
 
-        # Tin phan mo rong hon Content-Type do trinh duyet gui, tranh octet-stream
-        content_type = ALLOWED_TYPES[suffix]
         payload.append((name, content, content_type))
         descriptors.append(
             {
@@ -209,9 +211,24 @@ async def upload_item(
 @router.get("/items/{item_id}/result")
 async def item_result(item_id: str, client: Client, _: CurrentUser) -> dict:
     try:
-        return await client.item_result(item_id)
+        data = await client.item_result(item_id)
     except BatchApiError as exc:
+        # Phien da xong tu lau, nguon boc tach khong con giu -> lay ban da luu trong CSDL
+        saved = await history.get_result(item_id)
+        if saved is not None:
+            return {
+                "itemId": item_id,
+                "clientDossierId": saved.get("clientDossierId"),
+                "status": "done",
+                "result": saved.get("result"),
+                "fromHistory": True,
+            }
         raise _handle(exc) from exc
+
+    await history.save_result(
+        item_id, data.get("jobId"), data.get("procedure"), data.get("clientDossierId"), data.get("result")
+    )
+    return data
 
 
 @router.post("/items/{item_id}/retry")
