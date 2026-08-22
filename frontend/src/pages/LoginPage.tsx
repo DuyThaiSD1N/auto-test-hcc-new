@@ -84,8 +84,6 @@ export default function LoginPage() {
             {submitting ? 'Đang đăng nhập…' : 'Đăng nhập'}
           </button>
         </form>
-
-        <p className="hint">Tài khoản thử nghiệm mặc định: <code>admin</code> / <code>admin123</code></p>
       </div>
     </div>
   )
