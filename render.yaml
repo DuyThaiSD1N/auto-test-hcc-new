@@ -1,0 +1,25 @@
+# Render Blueprint - dung khi tao service bang "New > Blueprint"
+# Doc them: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: auto-test-hcc
+    runtime: docker
+    plan: free            # doi thanh starter khi can chay 24/7 (free se ngu sau 15 phut)
+    region: singapore     # gan Viet Nam nhat
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true      # push len nhanh chinh la tu deploy
+    envVars:
+      # Render tu sinh chuoi ngau nhien, khong can tu dat
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: APP_DEFAULT_USERNAME
+        value: admin
+      # sync: false = Render se hoi gia tri khi tao service, khong luu vao git
+      - key: APP_DEFAULT_PASSWORD
+        sync: false
+      - key: APP_DEFAULT_FULL_NAME
+        value: Quan tri vien
+      - key: APP_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "480"

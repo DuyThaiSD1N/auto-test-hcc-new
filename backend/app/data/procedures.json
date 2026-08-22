@@ -1,0 +1,252 @@
+{
+  "links": [
+    {
+      "key": "khai-sinh-dang-ky",
+      "code": "2.000986",
+      "label": "Liên thông đăng ký khai sinh, thường trú, BHYT cho trẻ dưới 6 tuổi",
+      "url": "https://lienthong.dichvucong.gov.vn/#/ke-khai/2.000986",
+      "needsAgencySelect": false,
+      "autoConfirm": false
+    },
+    {
+      "key": "ket-hon",
+      "code": "1.000894",
+      "label": "Thủ tục đăng ký kết hôn",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-3fac-7489-b53b-a15eb239a6fe",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "dang-ky-lai-ket-hon",
+      "code": "1.004746",
+      "label": "Thủ tục đăng ký lại kết hôn",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-6711-733d-b674-f82cb6606242",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "ket-hon-nuoc-ngoai",
+      "code": null,
+      "label": "Thủ tục đăng ký kết hôn có yếu tố nước ngoài",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-8e13-728a-a0cd-635811d8432e",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "khai-sinh-dang-ky-lai",
+      "code": "1.004884",
+      "label": "Thủ tục đăng ký lại khai sinh",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-6eac-7598-b88b-15f8a61b366a",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "khai-tu",
+      "code": "1.000656",
+      "label": "Thủ tục đăng ký khai tử",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-3fac-7489-b53b-9c6c958f2da4",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "khai-tu-dang-ky-lai",
+      "code": "1.005461",
+      "label": "Thủ tục đăng ký lại khai tử",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-6ebc-709e-8678-a9f8b66738f2",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "dang-ky-giam-ho",
+      "code": "1.004837",
+      "label": "Thủ tục đăng ký giám hộ",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-671b-75fa-82fb-8ad05a37f638",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "dang-ky-nhan-cha-me-con",
+      "code": "1.001022",
+      "label": "Thủ tục đăng ký nhận cha, mẹ, con",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-3fa6-722f-ac1a-e949c8ce3418",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "xac-nhan-tinh-trang-hon-nhan",
+      "code": "1.004873",
+      "label": "Thủ tục cấp Giấy xác nhận tình trạng hôn nhân",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-6eb3-7019-bf3f-fc58c9ee44b9",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "trich-luc-ks",
+      "code": "2.000635",
+      "label": "Cấp bản sao Trích lục hộ tịch, bản sao Giấy khai sinh",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-867c-72db-b6a7-dcbd8c763807",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "chung-thuc-ban-sao",
+      "code": "2.000815",
+      "label": "Chứng thực bản sao từ bản chính giấy tờ, văn bản",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-8e22-77ef-819f-e49460350904",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "chung-thuc-chu-ky",
+      "code": "2.000884",
+      "label": "Chứng thực chữ ký trong các giấy tờ, văn bản",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-8e2e-7359-b42f-d5dc8d74741b",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "chung-thuc-giao-dich-tai-san",
+      "code": "2.001035",
+      "label": "Chứng thực giao dịch liên quan đến tài sản là động sản, quyền sử dụng đất, nhà ở",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-95fa-70ca-93fd-4cab11b87897",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "chung-thuc-sua-doi-bo-sung-huy-bo-giao-dich",
+      "code": "2.000913",
+      "label": "Chứng thực việc sửa đổi, bổ sung, hủy bỏ giao dịch",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-8e59-72ab-ae1a-a2985865d253",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "chung-thuc-phan-chia-di-san",
+      "code": "2.001406",
+      "label": "Chứng thực văn bản thỏa thuận phân chia di sản",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-9daf-70da-8f48-223498332346",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "cap-ban-sao-so-goc",
+      "code": "2.000908",
+      "label": "Cấp bản sao từ sổ gốc",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-8e5d-72f9-8cf2-c71780251483",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "chung-thuc-di-chuc",
+      "code": "2.001019",
+      "label": "Chứng thực di chúc",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfd-95f0-7610-845f-c097f144bd55",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "ho-tro-mai-tang",
+      "code": "1.001731",
+      "label": "Hỗ trợ chi phí mai táng cho đối tượng bảo trợ xã hội",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfe-b7dd-7239-b166-b6cd79d326b8",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "xac-dinh-muc-do-khuyet-tat",
+      "code": "1.001699",
+      "label": "Xác định, xác định lại mức độ khuyết tật và cấp Giấy xác nhận khuyết tật",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfe-b7cd-76e9-b909-bcf437629cb8",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "dieu-chinh-huu-tri-xa-hoi",
+      "code": "1.014027",
+      "label": "Thực hiện, điều chỉnh, thôi hưởng trợ cấp hưu trí xã hội",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bff-2d80-74d8-8515-90f6f61822f0",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "bo-sung-than-nhan-liet-si",
+      "code": "1.010825",
+      "label": "Bổ sung tình hình thân nhân trong hồ sơ liệt sĩ",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfa-fc36-74e9-9909-551c04aa6c27",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "cap-giay-phep-xay-dung-moi-nha-o-rieng-le",
+      "code": "1.013225",
+      "label": "Cấp giấy phép xây dựng mới công trình cấp III, cấp IV và nhà ở riêng lẻ",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfe-9088-744d-aa0a-e846b6dce3d5",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "dang-ky-kinh-doanh",
+      "code": "1.001612",
+      "label": "Đăng ký thành lập hộ kinh doanh",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfb-d76d-737f-81b9-69258b07240b",
+      "needsAgencySelect": true,
+      "autoConfirm": false
+    },
+    {
+      "key": "dang-ky-dat-dai-tai-san-gan-lien-lan-dau",
+      "code": "1.013978",
+      "label": "Đăng ký đất đai, tài sản gắn liền với đất, cấp Giấy chứng nhận quyền sử dụng đất, quyền sở hữu tài sản gắn liền với đất lần đầu đối với hộ gia đình, cá nhân, cộng đồng dân cư, người gốc Việt Nam định cư ở nước ngoài",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfa-8678-770b-8917-1872078767cd",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "xet-tuyen-cong-chuc",
+      "code": "1.014113",
+      "label": "Thủ tục xét tuyển Công chức",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfb-2326-7367-83e6-f242eef7cbc5",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "thi-tuyen-cong-chuc",
+      "code": "1.014111",
+      "label": "Thủ tục thi tuyển Công chức",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d90b5-0f50-773c-88d5-07d6ef77b613",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "dang-ky-lap-dat-su-dung-nuoc-sach",
+      "code": "3.000598",
+      "label": "Thủ tục đăng ký lắp đặt sử dụng nước sạch",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019ef895-259b-72b1-ba55-179108f16bb1",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "chuyen-doi-ten-hop-dong-nuoc-sach",
+      "code": "3.000600",
+      "label": "Thủ tục chuyển đổi tên trong hợp đồng sử dụng nước sạch",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019ef89f-fba4-7698-9dbb-f18e145be976",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "giai-quyet-che-do-tro-cap-tho-cung-liet-si",
+      "code": "1.010803",
+      "label": "Giải quyết chế độ trợ cấp thờ cúng liệt sĩ",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfa-fc0c-7046-b5dc-04303a18608d",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    },
+    {
+      "key": "cap-doi-gcn-quyen-su-dung-dat",
+      "code": "1.012783",
+      "label": "Cấp đổi Giấy chứng nhận quyền sử dụng đất, quyền sở hữu tài sản gắn liền với đất",
+      "url": "https://dichvucong.gov.vn/thu-tuc-hanh-chinh/019d2bfa-6f3b-7238-9e41-307101b01795",
+      "needsAgencySelect": true,
+      "autoConfirm": true
+    }
+  ]
+}

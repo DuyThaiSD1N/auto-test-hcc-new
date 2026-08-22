@@ -1,0 +1,20 @@
+services:
+  app:
+    build: .
+    image: auto-test-hcc:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # BAT BUOC doi truoc khi chay that: openssl rand -hex 32
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?can dat APP_SECRET_KEY trong file .env}
+      APP_DEFAULT_USERNAME: ${APP_DEFAULT_USERNAME:-admin}
+      APP_DEFAULT_PASSWORD: ${APP_DEFAULT_PASSWORD:?can dat APP_DEFAULT_PASSWORD trong file .env}
+      APP_DEFAULT_FULL_NAME: ${APP_DEFAULT_FULL_NAME:-Quan tri vien}
+      APP_ACCESS_TOKEN_EXPIRE_MINUTES: ${APP_ACCESS_TOKEN_EXPIRE_MINUTES:-480}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
