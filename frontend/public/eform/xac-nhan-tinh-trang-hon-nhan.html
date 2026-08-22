@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <title>MOCK eForm — Cấp Giấy Xác Nhận Tình Trạng Hôn Nhân</title>
+    <style>
+        :root {
+            --line: #9a9a9a;
+            --ink: #111;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            font: 13px/1.45 "Times New Roman", Times, serif;
+            color: var(--ink);
+            background: #eef1f5;
+            padding: 16px;
+        }
+
+        .sheet {
+            flex: 1 1 auto;
+            max-width: 760px;
+            background: #fff;
+            border: 1px solid var(--line);
+            padding: 22px 26px 40px;
+        }
+
+        h1 {
+            font-size: 14px;
+            text-align: center;
+            margin: 0 0 2px;
+            text-transform: uppercase;
+        }
+
+        h2 {
+            font-size: 14px;
+            text-align: center;
+            margin: 0 0 20px;
+            text-transform: uppercase;
+        }
+
+        .section {
+            font-weight: bold;
+            margin: 18px 0 10px;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 6px;
+            margin-bottom: 9px;
+        }
+
+        .lb {
+            white-space: nowrap;
+        }
+
+        .grow {
+            flex: 1 1 120px;
+            min-width: 90px;
+        }
+
+        input.input-field,
+        x-input input,
+        x-input-number input,
+        x-select-area input {
+            width: 100%;
+            padding: 3px 5px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            font: inherit;
+            background: #fff;
+        }
+
+        x-input,
+        x-input-number {
+            display: block;
+            flex: 1 1 120px;
+        }
+
+        .date-parts {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 3px;
+        }
+
+        .date-parts input {
+            width: 34px;
+            text-align: center;
+            padding: 3px 2px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            font: inherit;
+        }
+
+        .date-parts input.yy {
+            width: 50px;
+        }
+
+        .input-field-select {
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            padding: 3px 22px 3px 6px;
+            background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0h10L5 6z' fill='%23555'/%3E%3C/svg%3E") no-repeat right 6px center;
+            cursor: pointer;
+            min-height: 24px;
+            user-select: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        [id^="custom-select-"] {
+            position: relative;
+            flex: 1 1 140px;
+            min-width: 110px;
+        }
+
+        .input-field-select-options {
+            position: absolute;
+            z-index: 30;
+            left: 0;
+            right: 0;
+            top: 100%;
+            background: #fff;
+            border: 1px solid var(--line);
+            max-height: 210px;
+            overflow: auto;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .16);
+        }
+
+        .input-field-select-options>div {
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+
+        .input-field-select-options>div:hover {
+            background: #e3f2fd;
+        }
+
+        .placeholder {
+            color: #777;
+        }
+
+        x-radio {
+            display: block;
+        }
+
+        x-radio.inline {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 18px;
+        }
+
+        x-radio label {
+            cursor: pointer;
+        }
+
+        x-radio>span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        x-select-area {
+            display: block;
+            border: 1px dashed #bbb;
+            padding: 8px 10px;
+            margin-top: 4px;
+            background: #fbfbfb;
+        }
+
+        .area-row {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            margin-bottom: 7px;
+        }
+
+        .area-row>span {
+            width: 116px;
+            flex: none;
+        }
+
+        [hidden] {
+            display: none !important;
+        }
+
+        .panel {
+            flex: 0 0 400px;
+            position: sticky;
+            top: 16px;
+            background: #fff;
+            border: 1px solid #c9c9c9;
+            border-radius: 6px;
+            padding: 12px;
+            font-family: system-ui, "Segoe UI", sans-serif;
+            font-size: 12px;
+            max-height: calc(100vh - 32px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel h3 {
+            margin: 0 0 8px;
+            font-size: 13px;
+        }
+
+        .panel .bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+
+        .panel button {
+            font: inherit;
+            padding: 4px 9px;
+            border: 1px solid #b5b5b5;
+            border-radius: 4px;
+            background: #f6f6f6;
+            cursor: pointer;
+        }
+
+        .panel button:hover {
+            background: #e9e9e9;
+        }
+
+        #dump {
+            flex: 1 1 auto;
+            overflow: auto;
+            border-top: 1px solid #e2e2e2;
+            padding-top: 8px;
+        }
+
+        #dump table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        #dump td {
+            padding: 2px 4px;
+            vertical-align: top;
+            border-bottom: 1px solid #f0f0f0;
+            word-break: break-word;
+        }
+
+        #dump td:first-child {
+            color: #555;
+            white-space: nowrap;
+            width: 42%;
+        }
+
+        #dump td.empty {
+            color: #bbb;
+        }
+
+        /* Chế độ nhúng (?embed=1): ẩn bảng debug, form full bề rộng — dùng trong màn gán nhãn */
+        body.embed { padding: 0; background: #fff; }
+        body.embed .panel { display: none; }
+        body.embed .sheet { max-width: none; border: none; }
+
+        /* Thanh cuộn mảnh, gọn */
+        * { scrollbar-width: thin; scrollbar-color: #b7c3d6 transparent; }
+        *::-webkit-scrollbar { width: 9px; height: 9px; }
+        *::-webkit-scrollbar-thumb { background: #b7c3d6; border-radius: 6px; border: 2px solid #fff; }
+        *::-webkit-scrollbar-thumb:hover { background: #8aa0c0; }
+        *::-webkit-scrollbar-track { background: transparent; }
+    </style>
+</head>
+
+<body>
+
+    <div class="sheet">
+        <h1>Mẫu biện tử tương tác yêu cầu</h1>
+        <h2>Cấp Giấy Xác Nhận Tình Trạng Hôn Nhân</h2>
+        <div id="form"></div>
+    </div>
+
+    <div class="panel">
+        <h3>Giá trị hiện tại trên form</h3>
+        <div class="bar">
+            <button id="btnRefresh">Đọc lại</button>
+            <button id="btnJson">Copy JSON</button>
+            <button id="btnClear">Xoá trắng</button>
+            <button id="btnSample">Điền mẫu</button>
+        </div>
+        <div id="dump"></div>
+    </div>
+
+    <script>
+        (() => {
+            "use strict";
+
+            // Nhúng trong màn gán nhãn: ?embed=1 -> ẩn bảng debug, form full bề rộng.
+            if (new URLSearchParams(location.search).get("embed") === "1") {
+                document.body.classList.add("embed");
+            }
+
+            // ────────────────────────── DỮ LIỆU ──────────────────────────
+            const GIAY_TO = ["Thẻ căn cước công dân", "Chứng minh nhân dân", "Hộ chiếu"];
+            const LOAI_CU_TRU = ["Thường trú", "Tạm trú"];
+            const GIOI_TINH = ["Nam", "Nữ"];
+            const DAN_TOC = ["Kinh", "Tày", "Thái", "Mường", "Mông", "Khác"];
+            const QUOC_TICH = ["Việt Nam", "Lào", "Campuchia"];
+            const TINH_TRANG_HN = [
+                "Hiện tại chưa đăng ký kết hôn",
+                "Hiện tại đang có vợ/chồng",
+                "Đã đăng ký kết hôn hoặc đã có vợ/chồng nhưng đã ly hôn; hiện tại chưa đăng ký kết hôn với ai",
+                "Đã đăng ký kết hôn hoặc đã có vợ/chồng nhưng vợ/chồng đã chết; hiện tại chưa đăng ký kết hôn với ai"
+            ];
+            const MUC_DICH = ["Sử dụng vào mục đích khác", "Kết hôn", "Visa/Xuất cảnh", "Xin việc"];
+
+            // Địa bàn 34 tỉnh/thành + phường/xã (2025), nạp từ /eform/dia-ban.json
+            // (sinh từ dữ liệu chuẩn của backend: python tools/gen-diaban.py).
+            let DIA_BAN = {};
+            let TINH = [];
+            const DIA_BAN_READY = fetch("/eform/dia-ban.json")
+                .then((r) => (r.ok ? r.json() : {}))
+                .then((data) => { DIA_BAN = data; TINH = Object.keys(data); })
+                .catch(() => { DIA_BAN = {}; TINH = []; });
+
+            // ────────────────────────── ĐẶC TẢ BIỂU MẪU ──────────────────────────
+            const SPEC = [
+                { section: "I. Thông tin về người yêu cầu cấp Giấy xác nhận tình trạng hôn nhân" },
+                {
+                    no: "(1)", label: "Họ, chữ đệm, tên:", name: "HoVaTenC", comp: "x-input",
+                    after: [{ label: "Ngày sinh:", name: "NgaySinhC", comp: "x-date" }]
+                },
+                { no: "(2)", label: "Số định danh cá nhân:", name: "SoDinhDanhC", comp: "x-input" },
+                {
+                    no: "(3)", label: "Giấy tờ tùy thân:", name: "LoaiGiayToDinhDanhC", comp: "x-select", options: GIAY_TO,
+                    after: [{ label: "Số:", name: "SoGiayToTuyThanC", comp: "raw" }]
+                },
+                {
+                    label: "Ngày, tháng, năm cấp:", name: "NgayCapDDC", comp: "x-date",
+                    after: [{ label: "Cơ quan cấp:", name: "NoiCapDDC", comp: "x-input" }]
+                },
+                { no: "(4)", label: "Loại cư trú:", name: "nycLoaiCuTru", comp: "x-select", options: LOAI_CU_TRU },
+                {
+                    label: "Nơi cư trú:", name: "nycNoiCuTru", comp: "x-radio", inline: true,
+                    options: [{ value: "1", label: "Trong Nước" }, { value: "Khac", label: "Khác" }],
+                    area: "nycNoiCuTru_TrongNuoc"
+                },
+                {
+                    no: "(5)", label: "Quan hệ với người được cấp Giấy xác nhận tình trạng hôn nhân:",
+                    name: "quanhevoinguoiduocxacminh", comp: "x-radio", inline: true, options: [
+                        // SỬA: pipeline (mapper.py) phát "1" (bản thân) / "2" (khác), không phải BanThan/Khac
+                        { value: "1", label: "Bản thân" },
+                        { value: "2", label: "Khác" }
+                    ]
+                },
+
+                { section: "II. Thông tin về người được cấp Giấy xác nhận tình trạng hôn nhân" },
+                {
+                    label: "Loại đăng ký:", name: "loaidangky", comp: "x-radio", inline: true, options: [
+                        { value: "DangKyLanDau", label: "Đăng ký lần đầu" }
+                    ]
+                },
+                {
+                    no: "(6)", label: "Họ, chữ đệm, tên:", name: "HoVaTenC1", comp: "x-input",
+                    after: [{ label: "(7) Ngày, tháng, năm sinh:", name: "NgaySinhC1", comp: "x-date" }]
+                },
+                {
+                    no: "(8)", label: "Giới tính:", name: "GioiTinhC1", comp: "x-select", options: GIOI_TINH,
+                    after: [{ label: "(9) Dân tộc:", name: "DanTocC1", comp: "x-select", options: DAN_TOC }]
+                },
+                {
+                    no: "(10)", label: "Quốc tịch:", name: "QuocTichC1", comp: "x-select", options: QUOC_TICH,
+                    after: [{ label: "(11) Số định danh cá nhân:", name: "SoDinhDanhC1", comp: "x-input" }]
+                },
+                {
+                    no: "(12)", label: "Giấy tờ tùy thân:", name: "LoaiGiayToDinhDanhC1", comp: "x-select", options: GIAY_TO,
+                    after: [{ label: "Số:", name: "SoGiayToTuyThanC1", comp: "x-input" }]
+                },
+                {
+                    label: "Ngày, tháng, năm cấp:", name: "NgayCapDDC1", comp: "x-date",
+                    after: [{ label: "Cơ quan cấp:", name: "NoiCapDDC1", comp: "x-input" }]
+                },
+                { no: "(13)", label: "Loại cư trú:", name: "nxnLoaiCuTru", comp: "x-select", options: LOAI_CU_TRU },
+                {
+                    label: "Nơi cư trú:", name: "nxnNoiCuTru", comp: "x-radio", inline: true,
+                    options: [{ value: "1", label: "Trong Nước" }, { value: "Khac", label: "Khác" }],
+                    area: "nxnNoiCuTru_TrongNuoc"
+                },
+                { no: "(14)", label: "Tình trạng hôn nhân:", name: "TinhTrangHonNhanC1", comp: "x-select", options: TINH_TRANG_HN },
+                { no: "(15)", label: "Mục đích sử dụng Giấy XNTTHN:", name: "mucdich", comp: "x-select", options: MUC_DICH },
+                { label: "Nhập mục đích khác:", name: "nhapmucdichkhac", comp: "raw" },
+                {
+                    no: "(16)", label: "Phương thức nhận kết quả:", name: "TraKQ", comp: "x-radio", options: [
+                        // SỬA: pipeline phát "1"; theo thứ tự cổng thật 1 Trực tiếp - 2 Bưu chính - 3 Trực tuyến
+                        { value: "1", label: "Trực tiếp" },
+                        { value: "2", label: "Bưu chính" },
+                        { value: "3", label: "Trực tuyến" },
+                    ]
+                },
+                { no: "(17)", label: "Hồ sơ đính kèm theo quy định:", comp: "label-only" },
+                { label: "Số lượng bản sao:", name: "SoLuong", comp: "raw", short: true },
+            ];
+
+            // ────────────────────────── TIỆN ÍCH ──────────────────────────
+            const el = (tag, attrs = {}, ...kids) => {
+                const node = document.createElement(tag);
+                for (const [k, v] of Object.entries(attrs)) {
+                    if (v === false || v == null) continue;
+                    if (k === "class") node.className = v;
+                    else if (k === "text") node.textContent = v;
+                    else node.setAttribute(k, v === true ? "" : v);
+                }
+                for (const kid of kids) if (kid) node.append(kid);
+                return node;
+            };
+            const fire = (node, type) => node.dispatchEvent(new Event(type, { bubbles: true }));
+
+            // ────────────────────────── COMPONENT ──────────────────────────
+            function buildInput(spec, tag = "x-input") {
+                const box = el(tag, { name: spec.name });
+                box.append(el("input", { name: spec.name, type: "text", autocomplete: "off" }));
+                return box;
+            }
+
+            function buildRaw(spec) {
+                const input = el("input", { name: spec.name, type: "text", class: "input-field", autocomplete: "off" });
+                if (spec.short) input.style.width = "60px";
+                return input;
+            }
+
+            function buildDate(spec) {
+                const box = el("x-date", { name: spec.name });
+                const wrap = el("div", { class: "date-parts" });
+                const mk = (part, cls) => el("input", {
+                    type: "text",
+                    maxlength: part === "year" ? 4 : 2,
+                    class: cls || "",
+                    name: `${spec.name}-${part}`
+                });
+                wrap.append(mk("day"), el("span", { text: "/" }), mk("month"), el("span", { text: "/" }), mk("year", "yy"));
+                box.append(wrap, el("input", { type: "hidden", name: `${spec.name}-name-date-input` }));
+                return box;
+            }
+
+            function buildRadio(spec) {
+                const box = el("x-radio", { name: spec.name, class: spec.inline ? "inline" : "" });
+                for (const opt of spec.options) {
+                    const id = `${spec.name}-${opt.value}`;
+                    const cb = el("input", { type: "checkbox", id });
+                    cb.addEventListener("change", () => {
+                        if (cb.checked) {
+                            for (const other of box.querySelectorAll('input[type="checkbox"]')) {
+                                if (other !== cb && other.checked) { other.checked = false; fire(other, "change"); }
+                            }
+                        }
+                        onRadioChange(spec, cb, opt);
+                    });
+                    box.append(el("span", {}, cb, el("label", { for: id, text: opt.label })));
+                }
+                return box;
+            }
+
+            function buildSelectWidget(id, options, { onPick = null, placeholder = "-- Chọn --" } = {}) {
+                const root = el("div", { id });
+                const head = el("div", { class: "input-field-select placeholder", text: placeholder });
+                root.append(head);
+                let list = null;
+
+                const close = () => { if (list) { list.remove(); list = null; } };
+                const open = () => {
+                    list = el("div", { class: "input-field-select-options" });
+                    const render = (items) => {
+                        for (const opt of items) {
+                            const d = el("div", { text: opt });
+                            d.addEventListener("click", () => {
+                                head.textContent = opt;
+                                head.classList.remove("placeholder");
+                                close();
+                                onPick && onPick(opt);
+                                refresh();
+                            });
+                            list.append(d);
+                        }
+                    };
+                    // options có thể là mảng, hàm trả mảng, hoặc hàm trả Promise (nạp bất đồng bộ)
+                    const items = typeof options === "function" ? options() : options;
+                    if (items instanceof Promise) {
+                        list.append(el("div", { class: "placeholder", text: "Đang tải..." }));
+                        items.then((rows) => { if (!list) return; list.innerHTML = ""; render(rows || []); });
+                    } else {
+                        render(items || []);
+                    }
+                    root.append(list);
+                };
+
+                head.addEventListener("click", () => (list ? close() : open()));
+                root._reset = () => { head.textContent = placeholder; head.classList.add("placeholder"); close(); };
+                root._value = () => (head.classList.contains("placeholder") ? "" : head.textContent.trim());
+                return root;
+            }
+
+            function buildSelect(spec) {
+                const box = el("x-select", { name: spec.name });
+                const w = buildSelectWidget(`custom-select-${spec.name}`, spec.options);
+                box.append(w);
+                return box;
+            }
+
+            function buildArea(name) {
+                const box = el("x-select-area", { name, hidden: true });
+                let tinhDaChon = "";
+
+                const row = (label, widget) => el("div", { class: "area-row" }, el("span", { text: label }), widget);
+
+                const wQuocGia = buildSelectWidget(`custom-select-${name}-qg`, ["Việt Nam", "Lào", "Campuchia"]);
+                // Ô Xã đọc động theo tỉnh đã chọn — KHÔNG thay thế widget (tránh engine giữ tham chiếu cũ).
+                const wXa = buildSelectWidget(`custom-select-${name}-xa`, () =>
+                    DIA_BAN_READY.then(() => DIA_BAN[tinhDaChon] || []));
+                const wTinh = buildSelectWidget(`custom-select-${name}-tinh`, () => DIA_BAN_READY.then(() => TINH), {
+                    onPick: (v) => { tinhDaChon = v; wXa._reset(); },   // đổi tỉnh -> reset xã
+                });
+
+                box.append(
+                    row("Quốc gia", wQuocGia),
+                    row("Tỉnh/Thành phố", wTinh),
+                    row("Xã/Phường", wXa),
+                    el("input", { class: "input-field", name: `Nhap${name}`, placeholder: "Số nhà, đường phố..." })
+                );
+                box._reset = () => {
+                    tinhDaChon = "";
+                    wQuocGia._reset();
+                    wTinh._reset();
+                    wXa._reset();
+                    box.querySelector("input.input-field").value = "";
+                };
+                return box;
+            }
+
+            function buildAreaKhac(name) {
+                const box = el("x-select-area", { name: name + "_Khac", hidden: true });
+                box.append(el("input", { class: "input-field", name: `Nhap${name}`, placeholder: "Nhập địa chỉ (nước ngoài)" }));
+                return box;
+            }
+
+            // ────────────────────────── LẮP RÁP ──────────────────────────
+            const root = document.getElementById("form");
+
+            function buildControl(spec) {
+                switch (spec.comp) {
+                    case "x-input": return buildInput(spec);
+                    case "x-date": return buildDate(spec);
+                    case "x-radio": return buildRadio(spec);
+                    case "x-select": return buildSelect(spec);
+                    case "raw": return buildRaw(spec);
+                    case "label-only": return null;
+                    default: return el("div", { text: `?? comp ${spec.comp}` });
+                }
+            }
+
+            for (const spec of SPEC) {
+                if (spec.section) {
+                    root.append(el("div", { class: "section", text: spec.section }));
+                    continue;
+                }
+                const line = el("div", { class: "row" });
+                line.append(el("span", { class: "lb", text: [spec.no, spec.label].filter(Boolean).join(" ") }));
+
+                if (spec.comp !== "label-only") {
+                    const ctrl = buildControl(spec);
+                    if (ctrl) {
+                        line.append(spec.comp === "x-radio" || spec.short ? ctrl : el("div", { class: "grow" }, ctrl));
+                    }
+                }
+
+                for (const extra of spec.after || []) {
+                    line.append(el("span", { class: "lb", text: extra.label }));
+                    const sub = buildControl(extra);
+                    line.append(extra.comp === "x-radio" || extra.short ? sub : el("div", { class: "grow" }, sub));
+                }
+
+                root.append(line);
+
+                if (spec.area) {
+                    const inland = buildArea(spec.area);
+                    const abroad = buildAreaKhac(spec.area);
+                    root.append(inland, abroad);
+                }
+            }
+
+            // ────────────────────────── HÀNH VI ──────────────────────────
+            function onRadioChange(spec, cb, opt) {
+                if (spec.area) {
+                    const inland = document.querySelector(`x-select-area[name="${spec.area}"]`);
+                    const abroad = document.querySelector(`x-select-area[name="${spec.area}_Khac"]`);
+                    if (inland) inland.hidden = !(cb.checked && opt.value === "1");
+                    if (abroad) abroad.hidden = !(cb.checked && opt.value === "Khac");
+                }
+                refresh();
+            }
+
+            // ────────────────────────── BẢNG THEO DÕI ──────────────────────────
+            const COMPS = "x-input,x-date,x-radio,x-select,x-select-area";
+
+            function readValue(node) {
+                const tag = node.tagName.toLowerCase();
+                if (tag === "x-radio") {
+                    return [...node.querySelectorAll('input[type="checkbox"]')]
+                        .filter((b) => b.checked)
+                        .map((b) => b.id.slice(b.id.lastIndexOf("-") + 1)).join(",");
+                }
+                if (tag === "x-select") {
+                    const w = node.querySelector('[id^="custom-select-"]');
+                    return w && w._value ? w._value() : "";
+                }
+                if (tag === "x-date") {
+                    const get = (p) => node.querySelector(`input[name="${node.getAttribute("name")}-${p}"]`)?.value || "";
+                    const [d, m, y] = ["day", "month", "year"].map(get);
+                    return d || m || y ? `${d}/${m}/${y}` : "";
+                }
+                if (tag === "x-select-area") {
+                    if (node.hidden) return "";
+                    const parts = [...node.querySelectorAll('[id^="custom-select-"]')].map((w) => w._value()).filter(Boolean);
+                    const addr = node.querySelector("input.input-field")?.value || "";
+                    return [...parts, addr].filter(Boolean).join(" / ");
+                }
+                return node.querySelector("input")?.value || "";
+            }
+
+            function refresh() {
+                const rows = [];
+                for (const node of document.querySelectorAll(COMPS)) {
+                    const name = node.getAttribute("name");
+                    if (name) rows.push([name, node.tagName.toLowerCase(), readValue(node)]);
+                }
+                for (const input of document.querySelectorAll("input[name]")) {
+                    if (input.closest(COMPS) || input.type === "hidden") continue;
+                    rows.push([input.getAttribute("name"), "raw", input.value]);
+                }
+                const table = el("table");
+                for (const [name, comp, value] of rows) {
+                    table.append(el("tr", {},
+                        el("td", { text: `${name} · ${comp}` }),
+                        el("td", { class: value ? "" : "empty", text: value || "—" })));
+                }
+                const dump = document.getElementById("dump");
+                dump.innerHTML = "";
+                dump.append(table);
+                window.__MOCK_VALUES__ = Object.fromEntries(rows.map(([n, , v]) => [n, v]));
+            }
+
+            document.getElementById("btnRefresh").addEventListener("click", refresh);
+            document.getElementById("btnClear").addEventListener("click", () => {
+                for (const input of root.querySelectorAll("input")) {
+                    if (input.type === "checkbox") input.checked = false;
+                    else input.value = "";
+                }
+                for (const w of root.querySelectorAll('[id^="custom-select-"]')) w._reset && w._reset();
+                for (const a of root.querySelectorAll("x-select-area")) {
+                    a.hidden = true;
+                    a._reset && a._reset();
+                }
+                refresh();
+            });
+            document.getElementById("btnJson").addEventListener("click", async () => {
+                refresh();
+                const text = JSON.stringify(window.__MOCK_VALUES__, null, 2);
+                try { await navigator.clipboard.writeText(text); } catch (_) { }
+                console.log(text);
+                alert("JSON đã được copy vào clipboard và log ra console!");
+            });
+            document.getElementById("btnSample").addEventListener("click", () => {
+                const set = (n, v) => {
+                    const i = document.querySelector(`input[name="${n}"]`);
+                    if (i) { i.value = v; fire(i, "input"); fire(i, "change"); }
+                };
+                set("HoVaTenC", "NGUYỄN DUY THÁI");
+                set("NgaySinhC-day", "11");
+                set("NgaySinhC-month", "08");
+                set("NgaySinhC-year", "2004");
+                set("SoDinhDanhC", "001204018566");
+                set("SoGiayToTuyThanC", "001204018566");
+                set("NgayCapDDC-day", "10");
+                set("NgayCapDDC-month", "04");
+                set("NgayCapDDC-year", "2021");
+                set("NoiCapDDC", "Cục cảnh sát đăng ký quản lý cư trú và dữ liệu quốc gia về dân cư");
+                set("HoVaTenC1", "NGUYỄN DUY THÁI");
+                set("SoDinhDanhC1", "001204018566");
+                set("SoLuong", "1");
+                document.getElementById("quanhevoinguoiduocxacminh-BanThan")?.click();
+                document.getElementById("loaidangky-DangKyLanDau")?.click();
+                refresh();
+            });
+
+            document.addEventListener("click", (e) => {
+                for (const list of document.querySelectorAll(".input-field-select-options")) {
+                    if (!list.parentElement.contains(e.target)) list.remove();
+                }
+            }, true);
+
+            root.addEventListener("input", refresh);
+            refresh();
+            console.log("[mock-eform] Đã dựng form Xác Nhận Tình Trạng Hôn Nhân với", document.querySelectorAll(COMPS).length, "components");
+        })();
+    </script>
+</body>
+
+</html>

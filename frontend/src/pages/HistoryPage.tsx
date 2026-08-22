@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { HistoryJob, HistoryJobDetail } from '../api/types'
+import type { HistoryJob, HistoryJobDetail, Procedure } from '../api/types'
 import { eformUrl } from '../eform/registry'
 import { useAuth } from '../auth/AuthContext'
 
@@ -25,11 +25,13 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [openJob, setOpenJob] = useState<HistoryJobDetail | null>(null)
+  const [procFilter, setProcFilter] = useState('')
+  const [procList, setProcList] = useState<Procedure[]>([])
 
   const load = useCallback(() => {
     setLoading(true)
     api
-      .historyJobs()
+      .historyJobs(200, procFilter)
       .then((res) => {
         setJobs(res.items)
         setEnabled(res.enabled)
@@ -37,9 +39,17 @@ export default function HistoryPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Không tải được lịch sử'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [procFilter])
 
   useEffect(load, [load])
+
+  // Danh sách thủ tục để lọc (kèm nhãn dễ đọc)
+  useEffect(() => {
+    api.procedures().then((r) => setProcList(r.items)).catch(() => setProcList([]))
+  }, [])
+
+  const procLabel = (key: string | null) =>
+    procList.find((p) => p.key === key)?.label ?? key ?? '—'
 
   async function toggle(jobId: string) {
     if (openJob?.jobId === jobId) {
@@ -89,6 +99,17 @@ export default function HistoryPage() {
           <Link to="/thu-tuc" className="back-link">
             ← Danh sách thủ tục
           </Link>
+          <label className="filter-inline">
+            <span>Thủ tục:</span>
+            <select value={procFilter} onChange={(e) => setProcFilter(e.target.value)}>
+              <option value="">Tất cả</option>
+              {procList.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button className="ghost-btn" onClick={load}>
             Tải lại
           </button>
@@ -131,7 +152,7 @@ export default function HistoryPage() {
                         <div>{job.name || job.jobId}</div>
                         <span className="muted-small">{job.jobId}</span>
                       </td>
-                      <td>{job.procedure}</td>
+                      <td>{procLabel(job.procedure)}</td>
                       <td>{PROVIDER_LABEL[job.provider] ?? job.provider}</td>
                       <td>
                         <span className={`status-pill s-${job.status}`}>{job.status}</span>

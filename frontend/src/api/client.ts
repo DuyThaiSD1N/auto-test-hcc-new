@@ -136,7 +136,10 @@ export const api = {
 
   // ---- Lịch sử đã lưu trong MongoDB ----
 
-  historyJobs: (limit = 50) => request<HistoryListResponse>(`/history/jobs?limit=${limit}`),
+  historyJobs: (limit = 50, procedure?: string) => {
+    const proc = procedure?.trim() ? `&procedure=${encodeURIComponent(procedure.trim())}` : ''
+    return request<HistoryListResponse>(`/history/jobs?limit=${limit}${proc}`)
+  },
 
   historyJob: (jobId: string) => request<HistoryJobDetail>(`/history/jobs/${jobId}`),
 

@@ -301,6 +301,7 @@ Biểu mẫu điện tử dựng sẵn nằm ở `frontend/public/eform/`, xem t
 | Thủ tục | File |
 |---------|------|
 | `trich-luc-ks` — Cấp bản sao Trích lục hộ tịch, Giấy khai sinh | `frontend/public/eform/trich-luc-ks.html` |
+| `xac-nhan-tinh-trang-hon-nhan` — Cấp Giấy xác nhận tình trạng hôn nhân | `frontend/public/eform/xac-nhan-tinh-trang-hon-nhan.html` |
 
 File này là bản clone biểu mẫu eForm legacy của `tokhaidientu.moj.gov.vn`, lấy nguyên từ
 `auto-fill-hcc-extension/docs/mock-eform-trich-luc.html` nên giữ đúng hợp đồng DOM mà engine điền

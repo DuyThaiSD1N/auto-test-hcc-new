@@ -4,6 +4,7 @@
  */
 export const EFORMS: Record<string, string> = {
   'trich-luc-ks': '/eform/trich-luc-ks.html',
+  'xac-nhan-tinh-trang-hon-nhan': '/eform/xac-nhan-tinh-trang-hon-nhan.html',
 }
 
 export function eformUrl(key: string): string | null {

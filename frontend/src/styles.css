@@ -1078,3 +1078,19 @@ input {
 .eform-side {
   scroll-behavior: smooth;
 }
+
+.filter-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.filter-inline select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  max-width: 320px;
+}
