@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { BatchField, LabelStatus, Procedure, WorklistItem, WorklistResponse } from '../api/types'
 import FieldsEditor from '../components/FieldsEditor'
-import { useAuth } from '../auth/AuthContext'
+import AppLayout from '../components/AppLayout'
 
 const STATUS_LABEL: Record<LabelStatus, string> = {
   pending: 'Chưa gán',
@@ -22,7 +22,6 @@ type Filter = 'all' | LabelStatus
 export default function LabelsPage() {
   const { key = '' } = useParams()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
 
   const [procedure, setProcedure] = useState<Procedure | null>(null)
   const [data, setData] = useState<WorklistResponse | null>(null)
@@ -107,36 +106,20 @@ export default function LabelsPage() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="brand compact">
-          <div className="brand-mark">AT</div>
-          <div>
-            <strong>Gán nhãn — {procedure?.label ?? key}</strong>
-            <span>Danh sách hồ sơ, sửa và đánh dấu hoàn thiện theo từng thủ tục</span>
-          </div>
-        </div>
-        <div className="user-box">
-          <div className="user-info">
-            <strong>{user?.full_name}</strong>
-            <span>@{user?.username}</span>
-          </div>
-          <button className="ghost-btn" onClick={logout}>
-            Đăng xuất
-          </button>
-        </div>
-      </header>
-
-      <main className="content single">
-        <div className="eform-bar" style={{ padding: 0, border: 'none', background: 'none' }}>
-          <Link to="/thu-tuc" className="back-link">
-            ← Chọn thủ tục khác
+    <AppLayout
+      title={`Gán nhãn — ${procedure?.label ?? key}`}
+      subtitle="Sửa dữ liệu bóc tách cho đúng rồi đánh dấu hoàn thiện"
+      actions={
+        <>
+          <Link to={`/thu-tuc/${key}`} className="ghost-btn">
+            Quét hồ sơ mới
           </Link>
           <button className="ghost-btn" onClick={load}>
             Tải lại
           </button>
-        </div>
-
+        </>
+      }
+    >
         {!data?.enabled && !loading && (
           <div className="alert warn">
             Chưa bật MongoDB (<code>APP_MONGO_URI</code>) nên không có worklist.
@@ -271,7 +254,6 @@ export default function LabelsPage() {
             </div>
           )}
         </section>
-      </main>
-    </div>
+    </AppLayout>
   )
 }

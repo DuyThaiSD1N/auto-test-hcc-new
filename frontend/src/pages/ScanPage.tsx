@@ -1,10 +1,10 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import AppLayout from '../components/AppLayout'
 import { eformUrl } from '../eform/registry'
-import { api } from '../api/client'
+import { api, normalizeTestCode, testCodeStore } from '../api/client'
 import { displayFieldValue } from '../api/fieldValue'
 import type { BatchItem, BatchJob, BatchResult, ItemStatus, Procedure } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
 
 type Phase = 'chuan-bi' | 'dang-tai' | 'dang-quet' | 'xong'
 
@@ -37,6 +37,13 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'Đã hủy',
 }
 
+/** Mã test mặc định theo thời điểm mở trang: TEST-20260823-1430 */
+function defaultTestCode(): string {
+  const now = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `TEST-${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}`
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
@@ -59,13 +66,13 @@ async function runPool(tasks: (() => Promise<void>)[], limit: number): Promise<v
 export default function ScanPage() {
   const { key = '' } = useParams()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
 
   const [procedure, setProcedure] = useState<Procedure | null>(null)
   const [batchReady, setBatchReady] = useState<boolean | null>(null)
   const [provider, setProvider] = useState<string | null>(null)
   const [accepted, setAccepted] = useState<string[]>(FALLBACK_SUFFIXES)
   const [jobName, setJobName] = useState('')
+  const [testCode, setTestCode] = useState(() => testCodeStore.get() || defaultTestCode())
   const [dossiers, setDossiers] = useState<Dossier[]>([])
   const [phase, setPhase] = useState<Phase>('chuan-bi')
   const [job, setJob] = useState<BatchJob | null>(null)
@@ -77,6 +84,8 @@ export default function ScanPage() {
 
   const counter = useRef(1)
   const fileInput = useRef<HTMLInputElement>(null)
+  const folderInput = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {
     api
@@ -96,6 +105,11 @@ export default function ScanPage() {
       })
       .catch(() => setBatchReady(false))
   }, [key, navigate])
+
+  // Nhớ mã test để F5 hay mở lại trang không phải gõ lại
+  useEffect(() => {
+    testCodeStore.set(testCode)
+  }, [testCode])
 
   // -------------------------------------------------------------- hồ sơ
 
@@ -138,6 +152,104 @@ export default function ScanPage() {
     setDossiers((prev) => [...prev, ...created])
   }, [accepted])
 
+  // Mỗi thư mục (con) = một hồ sơ. Nhận danh sách {file, đường dẫn tương đối} rồi nhóm theo
+  // thư mục cha trực tiếp. Dùng chung cho cả chọn thư mục (webkitRelativePath) lẫn kéo-thả.
+  const addNamedFiles = useCallback(
+    (pairs: { file: File; path: string }[]) => {
+      const rejected = pairs.filter(
+        ({ file }) =>
+          !accepted.some((ext) => file.name.toLowerCase().endsWith(ext)) || file.size > MAX_FILE,
+      )
+      const usable = pairs.filter((p) => !rejected.includes(p))
+      if (rejected.length) {
+        setError(
+          `Bỏ qua ${rejected.length} file không nhận được (chấp nhận ${accepted.join(', ')}, ` +
+            `mỗi file dưới 80MB).`,
+        )
+      }
+      if (!usable.length) return
+
+      const byFolder = new Map<string, File[]>()
+      for (const { file, path } of usable) {
+        const parts = path.split('/')
+        const folder = parts.length >= 2 ? parts[parts.length - 2] : 'khong-thu-muc'
+        if (!byFolder.has(folder)) byFolder.set(folder, [])
+        byFolder.get(folder)!.push(file)
+      }
+
+      const created: Dossier[] = []
+      for (const [folder, files] of byFolder) {
+        const total = files.reduce((sum, f) => sum + f.size, 0)
+        if (total > MAX_DOSSIER) {
+          setError(`Thư mục "${folder}" vượt quá 100MB (${formatSize(total)}), hãy tách nhỏ ra.`)
+          continue
+        }
+        const index = counter.current
+        counter.current += 1
+        created.push({
+          uid: `d${index}`,
+          clientDossierId: folder.replace(/[^\w.-]+/g, '-').slice(0, 60) || `hoso-${index}`,
+          files,
+          hasHandwriting: false,
+          status: 'moi',
+        })
+      }
+      setDossiers((prev) => [...prev, ...created])
+    },
+    [accepted],
+  )
+
+  // Chọn thư mục qua nút (webkitRelativePath = "root/hoso-01/to-khai.pdf")
+  const addFolders = useCallback(
+    (fileList: FileList | null) => {
+      if (!fileList?.length) return
+      addNamedFiles(
+        Array.from(fileList).map((f) => ({
+          file: f,
+          path: (f as File & { webkitRelativePath?: string }).webkitRelativePath || f.name,
+        })),
+      )
+    },
+    [addNamedFiles],
+  )
+
+  // Kéo-thả NHIỀU thư mục cùng lúc: đọc đệ quy từng thư mục qua File System Entry API.
+  const onDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      setDragOver(false)
+      const items = Array.from(e.dataTransfer.items)
+        .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+        .filter(Boolean) as FileSystemEntry[]
+      if (!items.length) return
+
+      const pairs: { file: File; path: string }[] = []
+      const walk = async (entry: FileSystemEntry, prefix: string): Promise<void> => {
+        if (entry.isFile) {
+          const file = await new Promise<File>((res, rej) =>
+            (entry as FileSystemFileEntry).file(res, rej),
+          )
+          pairs.push({ file, path: prefix + entry.name })
+        } else if (entry.isDirectory) {
+          const reader = (entry as FileSystemDirectoryEntry).createReader()
+          let batch: FileSystemEntry[]
+          do {
+            batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej))
+            for (const child of batch) await walk(child, `${prefix}${entry.name}/`)
+          } while (batch.length)
+        }
+      }
+
+      try {
+        await Promise.all(items.map((entry) => walk(entry, '')))
+        addNamedFiles(pairs)
+      } catch {
+        setError('Không đọc được thư mục kéo vào. Thử lại hoặc dùng nút chọn thư mục.')
+      }
+    },
+    [addNamedFiles],
+  )
+
   const patchDossier = useCallback(
     (uid: string, patch: Partial<Dossier>) =>
       setDossiers((prev) => prev.map((d) => (d.uid === uid ? { ...d, ...patch } : d))),
@@ -173,7 +285,7 @@ export default function ScanPage() {
     setPhase('dang-tai')
     let created: BatchJob
     try {
-      created = await api.createJob(jobName.trim() || procedure.label, procedure.key)
+      created = await api.createJob(jobName.trim() || procedure.label, procedure.key, testCode)
       setJob(created)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tạo được phiên quét')
@@ -307,36 +419,10 @@ export default function ScanPage() {
   const editable = phase === 'chuan-bi'
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="brand compact">
-          <div className="brand-mark">AT</div>
-          <div>
-            <strong>Auto Test Hành chính công</strong>
-            <span>{procedure?.label ?? 'Đang tải…'}</span>
-          </div>
-        </div>
-        <div className="user-box">
-          <Link to="/lich-su" className="ghost-btn">
-            Lịch sử
-          </Link>
-          <div className="user-info">
-            <strong>{user?.full_name}</strong>
-            <span>@{user?.username}</span>
-          </div>
-          <button className="ghost-btn" onClick={logout}>
-            Đăng xuất
-          </button>
-        </div>
-      </header>
-
-      <main className="content single">
-        <div className="eform-bar" style={{ padding: 0, border: 'none', background: 'none' }}>
-          <Link to="/thu-tuc" className="back-link">
-            ← Chọn thủ tục khác
-          </Link>
-        </div>
-
+    <AppLayout
+      title={procedure?.label ?? 'Đang tải…'}
+      subtitle="Tải hồ sơ lên, chạy bóc tách và mở form đã điền"
+    >
         {batchReady === false && (
           <div className="alert warn">
             {provider === 'internal' ? (
@@ -376,6 +462,25 @@ export default function ScanPage() {
               disabled={!editable}
             />
           </label>
+          <label className="field">
+            <span>Mã test (gắn vào log để tra lỗi sau này)</span>
+            <div className="input-with-action">
+              <input
+                type="text"
+                value={testCode}
+                onChange={(e) => setTestCode(normalizeTestCode(e.target.value))}
+                placeholder="TEST-20260823-1430"
+              />
+              <button className="ghost-btn" onClick={() => setTestCode(defaultTestCode())}>
+                Mã mới
+              </button>
+            </div>
+          </label>
+          <p className="muted-small">
+            Mọi thao tác trong lần chạy này được gắn mã test ở trên; log backend gom theo mã đó và
+            hiện trong <Link to="/lich-su">Lịch sử</Link> — xem được đã điền những gì, chạy hết bao
+            lâu, lỗi ở hồ sơ nào. Mã chỉ nhận chữ, số và <code>-._</code>.
+          </p>
         </section>
 
         <section className="panel">
@@ -399,15 +504,44 @@ export default function ScanPage() {
                   e.target.value = ''
                 }}
               />
+              {/* webkitdirectory: chọn thư mục; mỗi thư mục con thành 1 hồ sơ */}
+              <input
+                ref={folderInput}
+                type="file"
+                multiple
+                hidden
+                // @ts-expect-error webkitdirectory không có trong kiểu chuẩn nhưng trình duyệt hỗ trợ
+                webkitdirectory=""
+                directory=""
+                onChange={(e) => {
+                  addFolders(e.target.files)
+                  e.target.value = ''
+                }}
+              />
               <button className="primary-btn inline" onClick={() => fileInput.current?.click()}>
                 + Thêm 1 hồ sơ (chọn nhiều file)
               </button>
+              <button className="ghost-btn" onClick={() => folderInput.current?.click()}>
+                + Thêm thư mục (mỗi thư mục con = 1 hồ sơ)
+              </button>
+              <div
+                className={`drop-zone${dragOver ? ' over' : ''}`}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  setDragOver(true)
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={onDrop}
+              >
+                Kéo-thả <strong>nhiều thư mục</strong> vào đây — mỗi thư mục là một hồ sơ.
+              </div>
             </div>
           )}
 
           {!dossiers.length ? (
             <div className="empty">
-              Chưa có hồ sơ nào. Một hồ sơ có thể gồm nhiều file (tờ khai, CCCD…).
+              Chưa có hồ sơ nào. Một hồ sơ gồm nhiều file (tờ khai, CCCD…), hoặc chọn cả thư mục —
+              mỗi thư mục con thành một hồ sơ riêng.
               <div className="muted-small" style={{ marginTop: 6 }}>
                 Nhận {accepted.join(', ')} — ảnh lạ và tài liệu Word cũ được tự chuyển đổi trước khi
                 bóc tách.
@@ -583,6 +717,27 @@ export default function ScanPage() {
             {phase === 'xong' && (
               <>
                 <span className="muted-small">Đã xong phiên quét.</span>
+                {hasEform && (
+                  <button
+                    className="primary-btn inline"
+                    onClick={() => {
+                      // Mỗi hồ sơ (thư mục) mở một tab eForm riêng để đối chiếu cách điền
+                      const done = dossiers.filter(
+                        (d) => d.itemId && results[d.clientDossierId.trim()],
+                      )
+                      if (!done.length) {
+                        setError('Chưa có hồ sơ nào bóc tách xong để mở eForm.')
+                        return
+                      }
+                      done.forEach((d) =>
+                        window.open(`/thu-tuc/${key}/eform?item=${d.itemId}`, '_blank'),
+                      )
+                    }}
+                  >
+                    Mở eForm tất cả ({dossiers.filter((d) => results[d.clientDossierId.trim()]).length}{' '}
+                    tab)
+                  </button>
+                )}
                 <button className="ghost-btn" onClick={reset}>
                   Quét lô mới
                 </button>
@@ -590,7 +745,6 @@ export default function ScanPage() {
             )}
           </div>
         </section>
-      </main>
-    </div>
+    </AppLayout>
   )
 }

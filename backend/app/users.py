@@ -9,6 +9,7 @@ Mat khau luon luu duoi dang bam PBKDF2 (app/security.py), khong bao gio luu dang
 """
 
 import logging
+from datetime import datetime, timezone
 
 from .config import get_settings
 from .db import get_db
@@ -69,3 +70,92 @@ async def authenticate(username: str, password: str) -> dict | None:
         logger.info("Dang nhap that bai: sai mat khau cho '%s' (nguon: %s)", user["username"], user["source"])
         return None
     return user
+
+
+# ------------------------------------------------- quan ly tai khoan (admin)
+
+ROLES = ("admin", "tester")
+
+
+def _row(doc: dict) -> dict:
+    return {
+        "username": doc["username"],
+        "fullName": doc.get("full_name") or doc["username"],
+        "role": doc.get("role") or "tester",
+        "createdAt": doc.get("created_at"),
+        "updatedAt": doc.get("updated_at"),
+        "source": "mongo",
+    }
+
+
+async def list_users() -> dict:
+    """Danh sach tai khoan trong CSDL, kem tai khoan du phong tu bien moi truong.
+
+    Tai khoan env luon dang nhap duoc nen phai hien ra, nhung khong sua/xoa duoc
+    o day - doi no phai sua bien moi truong roi khoi dong lai backend.
+    """
+    db = get_db()
+    rows: list[dict] = []
+    if db is not None:
+        try:
+            async for doc in db.users.find({}).sort("username", 1):
+                rows.append(_row(doc))
+        except Exception:  # noqa: BLE001
+            logger.exception("Khong doc duoc danh sach tai khoan")
+
+    env = _env_user()
+    if not any(r["username"] == env["username"] for r in rows):
+        rows.append(
+            {
+                "username": env["username"],
+                "fullName": env["full_name"],
+                "role": env["role"],
+                "createdAt": None,
+                "updatedAt": None,
+                "source": "env",
+            }
+        )
+    return {"enabled": db is not None, "items": rows}
+
+
+async def save_user(
+    username: str, password: str | None, full_name: str | None, role: str
+) -> dict:
+    """Tao moi hoac cap nhat mot tai khoan. Khong truyen password = giu mat khau cu."""
+    db = get_db()
+    if db is None:
+        return {"saved": False, "reason": "Chua bat MongoDB nen khong luu duoc tai khoan."}
+
+    name = (username or "").strip().lower()
+    if not name:
+        return {"saved": False, "reason": "Thieu ten dang nhap."}
+    if role not in ROLES:
+        return {"saved": False, "reason": "Quyen khong hop le."}
+
+    existing = await db.users.find_one({"username": name})
+    if existing is None and not password:
+        return {"saved": False, "reason": "Tai khoan moi phai co mat khau."}
+    if password is not None and len(password) < 6:
+        return {"saved": False, "reason": "Mat khau phai dai it nhat 6 ky tu."}
+
+    now = datetime.now(tz=timezone.utc)
+    changes: dict = {"role": role, "updated_at": now}
+    if full_name is not None:
+        changes["full_name"] = full_name.strip() or name
+    if password:
+        changes["password_hash"] = hash_password(password)
+
+    await db.users.update_one(
+        {"username": name},
+        {"$set": changes, "$setOnInsert": {"username": name, "created_at": now}},
+        upsert=True,
+    )
+    return {"saved": True, "created": existing is None, "username": name}
+
+
+async def delete_user(username: str) -> dict:
+    db = get_db()
+    if db is None:
+        return {"deleted": False, "reason": "Chua bat MongoDB."}
+    result = await db.users.delete_one({"username": (username or "").strip().lower()})
+    return {"deleted": result.deleted_count > 0}

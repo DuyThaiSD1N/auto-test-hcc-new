@@ -51,6 +51,8 @@ export interface BatchJob {
   jobId: string
   name: string
   procedure: string
+  /** Mã test của lần chạy thử, lưu vào lịch sử để tra lại */
+  testCode?: string | null
   status: JobStatus
   counts: BatchCounts
   createdAt: string
@@ -112,6 +114,7 @@ export interface HistoryJob {
   jobId: string
   name: string | null
   procedure: string | null
+  testCode?: string | null
   provider: 'batch' | 'internal' | string
   status: string
   counts: BatchCounts
@@ -132,6 +135,16 @@ export interface HistoryItem {
   totalBytes: number | null
   files?: { name: string; type: string; bytes: number }[]
   hasResult: boolean
+  /** Số trường trong JSON bóc tách đã lưu */
+  resultFieldCount?: number
+  /** Có nhãn đã sửa tay hay chưa (draft/done), null = chưa gán */
+  labelStatus?: 'draft' | 'done' | null
+  /** Tiến trình xử lý hồ sơ (lưu trong CSDL nên phiên cũ vẫn xem lại được) */
+  attempts?: number
+  createdAt?: string | null
+  startedAt?: string | null
+  finishedAt?: string | null
+  hasErrors?: boolean
 }
 
 export interface HistoryJobDetail extends HistoryJob {
@@ -192,4 +205,21 @@ export interface HistoryResult {
   fieldCount: number
   result: BatchResult['result']
   savedAt: string
+}
+
+// ---- Quản lý tài khoản (chỉ admin) ----
+
+export interface AccountRow {
+  username: string
+  fullName: string
+  role: 'admin' | 'tester' | string
+  createdAt: string | null
+  updatedAt: string | null
+  /** "mongo" = sửa/xóa được; "env" = tài khoản dự phòng từ biến môi trường */
+  source: 'mongo' | 'env' | string
+}
+
+export interface AccountListResponse {
+  enabled: boolean
+  items: AccountRow[]
 }

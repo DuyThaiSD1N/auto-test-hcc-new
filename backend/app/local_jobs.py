@@ -194,13 +194,13 @@ class LocalJobEngine:
         client_dossier_id = str(metadata.get("clientDossierId") or "").strip()
         digest = hashlib.sha256(b"".join(content for _, content, _ in files)).hexdigest()
 
-        # Chong gui trung giong API that: theo ma ho so, Idempotency-Key hoac noi dung file
+        # Chong gui trung theo DANH TINH ho so (ma ho so) hoac Idempotency-Key (retry cung ho so).
+        # KHONG dedup theo noi dung file: hai ho so khac nhau nhung trung file (vd cung file test)
+        # van la HAI ho so rieng — neu gop se lam moi tab eForm mo cung mot ket qua.
         for existing_id in job["items"]:
             existing = self._items[existing_id]
-            if (
-                existing["clientDossierId"] == client_dossier_id
-                or (idempotency_key and existing["_idempotencyKey"] == idempotency_key)
-                or existing["_hash"] == digest
+            if existing["clientDossierId"] == client_dossier_id or (
+                idempotency_key and existing["_idempotencyKey"] == idempotency_key
             ):
                 return {**self._public_item(existing), "duplicate": True}
 
@@ -241,8 +241,11 @@ class LocalJobEngine:
         return self._public_item(item)
 
     def _result_view(self, item: dict) -> dict:
+        # Kem jobId/procedure de ben nhan con luu duoc lien ket ho so <-> phien quet
         return {
             "itemId": item["itemId"],
+            "jobId": item["jobId"],
+            "procedure": item["procedure"],
             "clientDossierId": item["clientDossierId"],
             "status": item["status"],
             "result": item["_result"],
@@ -319,6 +322,11 @@ class LocalJobEngine:
             item["status"] = "done"
             item["_files"] = None  # tra lai bo nho, ho so da xong
         except BatchApiError as exc:
+            # Ghi lai vi day la ca "ho so hong" hay gap nhat, khong co dong nay thi
+            # tren may chu khong con dau vet gi de doi chieu
+            logger.warning(
+                "Ho so %s that bai: [%s] %s", item["clientDossierId"], exc.error_code, exc.message
+            )
             item["status"] = "failed"
             item["error"] = exc.message
             item["hasErrors"] = True

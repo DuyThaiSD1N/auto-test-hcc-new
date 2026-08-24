@@ -1,4 +1,5 @@
 import type {
+  AccountListResponse,
   BatchItem,
   BatchJob,
   BatchResult,
@@ -17,6 +18,7 @@ import type {
 } from './types'
 
 const TOKEN_KEY = 'hcc.access_token'
+const TEST_CODE_KEY = 'hcc.test_code'
 
 export class ApiError extends Error {
   status: number
@@ -30,6 +32,31 @@ export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
   clear: () => localStorage.removeItem(TOKEN_KEY),
+}
+
+/**
+ * Mã test của lần chạy thử đang mở, gửi kèm khi tạo phiên quét và lưu vào lịch sử.
+ * Giữ trong localStorage để F5 không mất mã.
+ */
+export const testCodeStore = {
+  get: () => localStorage.getItem(TEST_CODE_KEY) ?? '',
+  set: (code: string) => {
+    const clean = normalizeTestCode(code)
+    if (clean) localStorage.setItem(TEST_CODE_KEY, clean)
+    else localStorage.removeItem(TEST_CODE_KEY)
+  },
+}
+
+/** Giữ mã test gọn và dễ tra: bỏ dấu, thay ký tự lạ bằng "-". */
+export function normalizeTestCode(code: string): string {
+  return code
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -94,10 +121,10 @@ export const api = {
 
   batchStatus: () => request<BatchStatus>('/batch/status'),
 
-  createJob: (name: string, procedure: string) =>
+  createJob: (name: string, procedure: string, testCode?: string) =>
     request<BatchJob>('/batch/jobs', {
       method: 'POST',
-      body: JSON.stringify({ name, procedure }),
+      body: JSON.stringify({ name, procedure, testCode: testCode?.trim() || null }),
     }),
 
   uploadDossier: (
@@ -171,6 +198,29 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+
+  // ---- Quản lý tài khoản (chỉ admin gọi được) ----
+
+  accounts: () => request<AccountListResponse>('/users'),
+
+  createAccount: (body: {
+    username: string
+    password: string
+    fullName: string
+    role: string
+  }) => request<{ saved: boolean }>('/users', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateAccount: (
+    username: string,
+    body: { password?: string | null; fullName?: string; role: string },
+  ) =>
+    request<{ saved: boolean }>(`/users/${encodeURIComponent(username)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ username, ...body }),
+    }),
+
+  deleteAccount: (username: string) =>
+    request<{ deleted: boolean }>(`/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
 }
 
 /**

@@ -16,6 +16,7 @@ backend/                FastAPI
   app/routers/procedures.py  GET /api/procedures, GET /api/procedures/{key}
   app/routers/batch.py       proxy /api/batch/* (tải hồ sơ, chạy, lấy kết quả)
   app/routers/history.py     tra cứu lịch sử đã lưu trong MongoDB
+  app/routers/users.py       quản lý tài khoản (chỉ admin)
   app/extraction.py          chọn nguồn bóc tách theo cấu hình
   app/local_jobs.py          hàng đợi hồ sơ khi dùng BE nội bộ
   app/internal_client.py     gọi BE nội bộ (/api/v1/process)
@@ -26,6 +27,9 @@ backend/                FastAPI
 frontend/               Vite + React + TypeScript
   src/pages/LoginPage.tsx       UI đăng nhập
   src/pages/ProceduresPage.tsx  UI danh sách + chọn thủ tục
+  src/pages/HistoryPage.tsx     UI lịch sử: đã điền gì, chạy ra sao
+  src/pages/UsersPage.tsx       UI quản lý tài khoản (chỉ admin)
+  src/components/AppLayout.tsx  khung chung: thanh bên + thanh tiêu đề
   src/auth/AuthContext.tsx      lưu phiên, tự khôi phục từ localStorage
   src/api/client.ts             gọi API qua proxy /api
 ```
@@ -53,27 +57,43 @@ Mở http://localhost:5173 — Vite tự proxy `/api` sang `http://127.0.0.1:800
 
 Tài liệu API tự sinh: http://127.0.0.1:8000/docs
 
-## Tài khoản đăng nhập
+## Tài khoản & phân quyền
 
-Không có đăng ký tự do. Tài khoản lưu trong MongoDB, tạo bằng script:
+Không có đăng ký tự do. **Tài khoản quản trị tạo tài khoản cho người khác ngay trên giao diện**
+tại `/tai-khoan` (thanh bên chỉ hiện mục này với tài khoản admin).
+
+| Quyền | Làm được gì |
+|-------|-------------|
+| `admin` — Quản trị | mọi thứ của người dùng, **cộng** tạo/sửa/xóa tài khoản và **xóa phiên trong lịch sử** |
+| `tester` — Người dùng | chạy phiên quét, bóc tách, gán nhãn, xem lịch sử và dữ liệu đã điền |
+
+Chặn ở **cả hai lớp**: giao diện ẩn nút, backend chặn bằng dependency `require_admin`
+([`app/deps.py`](backend/app/deps.py)) nên gọi thẳng API cũng nhận 403.
+
+Vẫn tạo được tài khoản bằng dòng lệnh khi cần:
 
 ```bash
-# Tạo tài khoản cho người khác vào test
 python tools/seed_user.py --username canbo1 --password 'MatKhau123' --name 'Nguyễn Văn A'
-
-# Tài khoản quản trị
 python tools/seed_user.py --username sep --password 'MatKhau456' --name 'Quản trị' --role admin
-
-python tools/seed_user.py --list             # xem danh sách
-python tools/seed_user.py --delete canbo1    # xóa
+python tools/seed_user.py --list
+python tools/seed_user.py --delete canbo1
 ```
 
 Chạy lại với cùng `--username` là **đổi mật khẩu**. Tên đăng nhập không phân biệt hoa thường.
 Mật khẩu băm PBKDF2-SHA256, không bao giờ lưu dạng thường.
 
 Ngoài ra luôn có **một tài khoản dự phòng từ biến môi trường** (`APP_DEFAULT_USERNAME` /
-`APP_DEFAULT_PASSWORD`, mặc định `admin` / `admin123`) để đăng nhập được cả khi CSDL còn trống hoặc
-chưa bật Mongo. Deploy thật thì phải đổi mật khẩu này.
+`APP_DEFAULT_PASSWORD`, mặc định `admin` / `admin123`, quyền admin) để đăng nhập được cả khi CSDL
+còn trống hoặc chưa bật Mongo. Tài khoản này hiện trong danh sách nhưng **không sửa/xóa được từ
+giao diện** — phải đổi trong `backend/.env` rồi khởi động lại backend. Deploy thật thì bắt buộc đổi.
+
+## Giao diện
+
+Mọi trang sau khi đăng nhập dùng chung khung [`components/AppLayout.tsx`](frontend/src/components/AppLayout.tsx):
+thanh điều hướng bên trái (Thủ tục · Lịch sử · Tài khoản cho admin, kèm hộp người dùng + đăng xuất)
+và thanh tiêu đề dính ở trên chứa tên trang và các nút thao tác của riêng trang đó.
+Toàn bộ màu sắc, khoảng cách, nút, bảng, nhãn trạng thái khai báo bằng biến CSS ở đầu
+[`styles.css`](frontend/src/styles.css) — đổi tông màu chỉ cần sửa mấy biến trong `:root`.
 
 ## API
 
@@ -84,6 +104,10 @@ chưa bật Mongo. Deploy thật thì phải đổi mật khẩu này.
 | GET | `/api/auth/me` | thông tin người dùng của token hiện tại |
 | GET | `/api/procedures?q=` | danh sách thủ tục, tìm theo tên/mã (không phân biệt dấu và hoa thường) |
 | GET | `/api/procedures/{key}` | chi tiết một thủ tục |
+| GET | `/api/users` | **admin** — danh sách tài khoản |
+| POST | `/api/users` | **admin** — tạo tài khoản |
+| PUT | `/api/users/{username}` | **admin** — đổi họ tên, quyền, mật khẩu |
+| DELETE | `/api/users/{username}` | **admin** — xóa tài khoản |
 
 ## Bóc tách hồ sơ theo lô
 
@@ -207,6 +231,16 @@ Mỗi thủ tục có **worklist gán nhãn riêng** tại `/thu-tuc/{key}/nhan`
 
 Danh sách thủ tục hiện badge tiến trình **"đã hoàn thiện / tổng nhãn"** trên mỗi thủ tục.
 
+### Con số thống kê đếm cái gì
+
+Mọi con số (badge trên danh sách thủ tục, thanh tiến trình worklist) chỉ tính **dữ liệu còn trong
+hệ thống**: một hồ sơ được đếm khi **kết quả bóc tách của nó còn lưu** trong `results`.
+
+- Xóa một phiên quét sẽ cuốn theo **hồ sơ, kết quả và cả nhãn** của phiên đó. Nhãn lưu theo
+  `itemId` chứ không kèm `jobId`, nên `delete_job` phải lấy danh sách hồ sơ trước rồi xóa nhãn
+  theo đó — nếu không, nhãn ở lại và thủ tục cứ hiện "0/1" trong khi không còn hồ sơ nào để mở.
+- Nhãn mồ côi (hồ sơ đã bị xóa) **không hiện trong worklist và không được đếm**.
+
 Nhãn lưu ở collection `labels` (khóa `itemId`), có thêm `status` (`draft`/`done`), người gán, thời điểm.
 Trình sửa trường dùng chung [`components/FieldsEditor.tsx`](frontend/src/components/FieldsEditor.tsx)
 cho cả worklist lẫn màn hình xem chi tiết.
@@ -240,6 +274,23 @@ rút gọn (luật khớp *chứa*) lẫn tên đầy đủ (khớp *chính xác
 ## Cơ sở dữ liệu (MongoDB)
 
 Mọi phiên quét và **JSON bóc tách** được lưu lại để tra cứu, đối chiếu về sau. Xem tại `/lich-su`.
+
+### Trang lịch sử xem được gì
+
+Bấm *Xem chi tiết* một phiên là thấy đủ **đã điền những gì** và **chạy ra sao**:
+
+- **Tiến trình phiên**: trạng thái, mã test, nguồn bóc tách, mốc *tạo → bắt đầu → kết thúc* kèm
+  tổng thời gian chạy, và số hồ sơ xong / lỗi.
+- **Từng hồ sơ**: giờ bắt đầu, mất bao lâu, số lần thử, lỗi (nếu có), số trường bóc tách được và
+  trạng thái nhãn.
+- **Xem chi tiết** một hồ sơ: bung ngay danh sách *tên trường → giá trị đã điền*. Ưu tiên **bản
+  sửa tay** nếu hồ sơ đã gán nhãn (đúng thứ tự eForm nạp dữ liệu), ghi rõ nguồn và ai sửa lúc nào.
+  Nút *Mở form + JSON* mở màn hình eForm đã điền đầy đủ.
+
+**Mã test** đặt ở bước "1. Phiên quét" (mặc định `TEST-<ngày>-<giờphút>`) chỉ để đánh dấu lần chạy
+thử, lưu vào `jobs.testCode` và hiện thành một cột ở lịch sử.
+
+> Toàn bộ tiến trình đọc từ CSDL nên **khởi động lại backend vẫn xem lại được**.
 
 ### Các collection
 

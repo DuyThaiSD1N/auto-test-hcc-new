@@ -6,12 +6,14 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from .. import history
 from ..config import get_settings
-from ..deps import get_current_user
+from ..deps import get_current_user, require_admin
 from ..schemas import UserOut
 
 router = APIRouter(prefix="/api/history", tags=["history"])
 
 CurrentUser = Annotated[UserOut, Depends(get_current_user)]
+# Xoa du lieu la thao tac khong lay lai duoc -> chi quan tri
+AdminUser = Annotated[UserOut, Depends(require_admin)]
 
 
 @router.get("/status")
@@ -60,7 +62,7 @@ async def get_job(job_id: str, _: CurrentUser) -> dict:
 
 
 @router.delete("/jobs/{job_id}")
-async def delete_job(job_id: str, _: CurrentUser) -> dict:
+async def delete_job(job_id: str, _: AdminUser) -> dict:
     result = await history.delete_job(job_id)
     if not result.get("deleted"):
         raise HTTPException(status_code=404, detail="Khong tim thay phien quet trong lich su.")

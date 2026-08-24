@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { BatchField, Procedure } from '../api/types'
 import { eformUrl } from '../eform/registry'
+import AppLayout from '../components/AppLayout'
 import { fillEform } from '../eform/runFill'
 import type { FillResult } from '../eform/runFill'
 import { useAuth } from '../auth/AuthContext'
@@ -30,15 +31,20 @@ function orderedKeys(obj: Record<string, unknown>): string[] {
 export default function EformPage() {
   const { key = '' } = useParams()
   const [params] = useSearchParams()
+  const navigate = useNavigate()
   const itemId = params.get('item')
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
 
   const [procedure, setProcedure] = useState<Procedure | null>(null)
   const [fields, setFields] = useState<BatchField[]>([])
   const [rawResult, setRawResult] = useState<unknown>(null)
   const [labeled, setLabeled] = useState(false)
   const [labeledInfo, setLabeledInfo] = useState<string | null>(null)
-  const [view, setView] = useState<View>('eform')
+  // Mở thẳng một tab qua URL (?view=json) — tiện gửi link cho nhau xem JSON.
+  // Không có eForm dựng sẵn thì cũng vào thẳng tab JSON (đỡ hiện tab Form trống).
+  const [view, setView] = useState<View>(
+    params.get('view') === 'json' || !eformUrl(key) ? 'json' : 'eform',
+  )
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
@@ -48,6 +54,9 @@ export default function EformPage() {
   const [frameReady, setFrameReady] = useState(false)
   const [frameEpoch, setFrameEpoch] = useState(0)
   const [status, setStatus] = useState<'pending' | 'draft' | 'done'>('pending')
+  // Tab JSON: mặc định chia đôi màn hình như tab Form, bấm mở rộng thì chiếm hết bề ngang
+  const [jsonFull, setJsonFull] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [autoSaveMsg, setAutoSaveMsg] = useState<string | null>(null)
 
   const frameRef = useRef<HTMLIFrameElement>(null)
@@ -164,6 +173,26 @@ export default function EformPage() {
     setDirty(true)
   }, [])
 
+  // Quay lại danh sách hồ sơ, lưu tiến trình trước khi rời (phòng khi tự-lưu 1.2s chưa chạy)
+  const [goingBack, setGoingBack] = useState(false)
+  async function backToList() {
+    setGoingBack(true)
+    try {
+      if (itemId && dirty && fields.length) {
+        await api.saveLabel(itemId, {
+          fields,
+          procedure: key,
+          clientDossierId: null,
+          status: status === 'done' ? 'done' : 'draft',
+        })
+      }
+    } catch {
+      /* lưu lỗi vẫn cho quay lại; auto-save/nút lưu tay vẫn còn */
+    } finally {
+      navigate(`/thu-tuc/${key}/nhan`)
+    }
+  }
+
   async function save(status: 'draft' | 'done' = 'draft') {
     if (!itemId) return
     setSaving(true)
@@ -186,6 +215,16 @@ export default function EformPage() {
     }
   }
 
+  async function copyJson() {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(rawResult, null, 2))
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setError('Trình duyệt không cho chép vào clipboard. Bôi đen rồi Ctrl+C.')
+    }
+  }
+
   async function handleFill() {
     setError(null)
     setFilling(true)
@@ -199,33 +238,20 @@ export default function EformPage() {
   }
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="brand compact">
-          <div className="brand-mark">AT</div>
-          <div>
-            <strong>Gán nhãn — {procedure?.label ?? key}</strong>
-            <span>Xem form đã điền + JSON bóc tách, sửa và lưu thành nhãn đúng</span>
-          </div>
-        </div>
-        <div className="user-box">
-          <Link to={`/thu-tuc/${key}/nhan`} className="ghost-btn">
-            Nhãn đã gán
-          </Link>
-          <div className="user-info">
-            <strong>{user?.full_name}</strong>
-            <span>@{user?.username}</span>
-          </div>
-          <button className="ghost-btn" onClick={logout}>
-            Đăng xuất
-          </button>
-        </div>
-      </header>
-
-      <div className="eform-bar">
-        <Link to="/thu-tuc" className="back-link">
-          ← Chọn thủ tục khác
+    <AppLayout
+      fullBleed
+      title={`Gán nhãn — ${procedure?.label ?? key}`}
+      subtitle="Form đã điền + JSON bóc tách; sửa lại cho đúng rồi lưu thành nhãn"
+      actions={
+        <Link to={`/thu-tuc/${key}/nhan`} className="ghost-btn">
+          Nhãn đã gán
         </Link>
+      }
+    >
+      <div className="eform-bar">
+        <button className="ghost-btn" onClick={backToList} disabled={goingBack}>
+          {goingBack ? 'Đang lưu…' : '← Danh sách hồ sơ'}
+        </button>
         <span className="view-switch">
           <button
             className={`chip${view === 'eform' ? ' active' : ''}`}
@@ -245,7 +271,7 @@ export default function EformPage() {
       </div>
 
       {error && (
-        <div className="alert error dismissible" style={{ margin: '0 24px' }}>
+        <div className="alert error dismissible" style={{ margin: '14px 28px 0' }}>
           <span>{error}</span>
           <button className="ghost-btn" onClick={() => setError(null)}>
             Đóng
@@ -259,7 +285,7 @@ export default function EformPage() {
           của thủ tục).
         </div>
       ) : (
-        <div className="eform-split">
+        <div className={`eform-split${view === 'json' && jsonFull ? ' json-full' : ''}`}>
           <div className="doc-pane">
             {view === 'eform' ? (
               <>
@@ -292,9 +318,22 @@ export default function EformPage() {
                 )}
               </>
             ) : (
-              <div className="json-view">
-                <pre>{JSON.stringify(rawResult, null, 2)}</pre>
-              </div>
+              <>
+                <div className="doc-tabs">
+                  <button className="ghost-btn" onClick={() => setJsonFull((v) => !v)}>
+                    {jsonFull ? '⤡ Thu gọn về hai cột' : '⤢ Mở rộng toàn màn hình'}
+                  </button>
+                  <button className="ghost-btn" onClick={copyJson}>
+                    {copied ? 'Đã chép ✓' : 'Chép JSON'}
+                  </button>
+                  <span className="muted-small">
+                    {fields.length} trường · cuộn trong khung để xem hết
+                  </span>
+                </div>
+                <div className="json-view">
+                  <pre>{JSON.stringify(rawResult, null, 2)}</pre>
+                </div>
+              </>
             )}
           </div>
 
@@ -337,33 +376,51 @@ export default function EformPage() {
             </div>
 
             <div className="label-actions">
-              <div className="label-actions row">
-                <button
-                  className="ghost-btn"
-                  onClick={() => save('draft')}
-                  disabled={saving || !fields.length}
-                >
-                  Lưu nháp
-                </button>
-                <button
-                  className="primary-btn inline"
-                  onClick={() => save('done')}
-                  disabled={saving || !fields.length}
-                >
-                  {saving ? 'Đang lưu…' : 'Lưu & hoàn thiện'}
-                </button>
-              </div>
-              {status === 'done' && <span className="muted-small ok-text">● Đã hoàn thiện</span>}
-              {dirty ? (
-                <span className="muted-small">Đang chờ tự lưu…</span>
-              ) : autoSaveMsg ? (
-                <span className="muted-small ok-text">{autoSaveMsg}</span>
-              ) : null}
-              {saveMsg && <span className="muted-small ok-text">{saveMsg}</span>}
+              {/* Hồ sơ đã hoàn thiện và không có sửa đổi mới: chỉ báo trạng thái đã lưu,
+                  không mời bấm lưu lần nữa. Chạm vào bất kỳ trường nào là nút hiện lại. */}
+              {status === 'done' && !dirty ? (
+                <div className="saved-state">
+                  <span className="badge-labeled">✓ Đã lưu &amp; hoàn thiện</span>
+                  <span className="muted-small">
+                    {saveMsg ?? autoSaveMsg ?? labeledInfo ?? 'Nhãn đã lưu trong hệ thống.'}
+                  </span>
+                  <span className="muted-small">Sửa bất kỳ trường nào để lưu lại.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="label-actions row">
+                    <button
+                      className="ghost-btn"
+                      onClick={() => save('draft')}
+                      disabled={saving || !fields.length}
+                    >
+                      Lưu nháp
+                    </button>
+                    <button
+                      className="primary-btn inline"
+                      onClick={() => save('done')}
+                      disabled={saving || !fields.length}
+                    >
+                      {saving ? 'Đang lưu…' : 'Lưu & hoàn thiện'}
+                    </button>
+                  </div>
+                  {status === 'draft' && !dirty && (
+                    <span className="muted-small ok-text">
+                      ● Đã lưu nháp — bấm “Lưu &amp; hoàn thiện” khi xong
+                    </span>
+                  )}
+                  {dirty ? (
+                    <span className="muted-small">Đang chờ tự lưu…</span>
+                  ) : autoSaveMsg ? (
+                    <span className="muted-small ok-text">{autoSaveMsg}</span>
+                  ) : null}
+                  {saveMsg && <span className="muted-small ok-text">{saveMsg}</span>}
+                </>
+              )}
             </div>
           </aside>
         </div>
       )}
-    </div>
+    </AppLayout>
   )
 }

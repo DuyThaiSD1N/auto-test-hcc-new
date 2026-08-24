@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import ProceduresPage from './pages/ProceduresPage'
 import EformPage from './pages/EformPage'
 import HistoryPage from './pages/HistoryPage'
+import UsersPage from './pages/UsersPage'
 import LabelsPage from './pages/LabelsPage'
 import ScanPage from './pages/ScanPage'
 
@@ -51,6 +52,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <HistoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/tai-khoan"
+            element={
+              <ProtectedRoute adminOnly>
+                <UsersPage />
               </ProtectedRoute>
             }
           />

@@ -78,9 +78,13 @@ async def create_job(payload: CreateJobRequest, client: Client, _: CurrentUser) 
     if get_procedure(payload.procedure) is None:
         raise HTTPException(status_code=400, detail="Ma thu tuc khong co trong danh muc.")
     try:
-        return await client.create_job(payload.name, payload.procedure)
+        job = await client.create_job(payload.name, payload.procedure)
     except BatchApiError as exc:
         raise _handle(exc) from exc
+
+    # Ma test khong gui sang nguon boc tach, chi luu o day de tra lai lich su
+    await history.set_job_test_code(job["jobId"], payload.test_code)
+    return {**job, "testCode": payload.test_code}
 
 
 @router.get("/jobs/{job_id}")

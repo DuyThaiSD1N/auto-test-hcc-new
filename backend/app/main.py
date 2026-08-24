@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import db
 from .config import get_settings
-from .routers import auth, batch, history, procedures
+from .routers import auth, batch, history, procedures, users
 
 logger = logging.getLogger("uvicorn.error")
 settings = get_settings()
@@ -46,6 +46,7 @@ app.include_router(auth.router)
 app.include_router(procedures.router)
 app.include_router(batch.router)
 app.include_router(history.router)
+app.include_router(users.router)
 
 
 @app.get("/api/health", tags=["system"])

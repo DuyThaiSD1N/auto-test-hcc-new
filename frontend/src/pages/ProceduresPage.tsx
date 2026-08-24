@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { LabelStats, Procedure } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
+import AppLayout from '../components/AppLayout'
 
 export default function ProceduresPage() {
-  const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   const [query, setQuery] = useState('')
@@ -57,30 +56,11 @@ export default function ProceduresPage() {
   )
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="brand compact">
-          <div className="brand-mark">AT</div>
-          <div>
-            <strong>Auto Test Hành chính công</strong>
-            <span>Chọn thủ tục cần thử nghiệm</span>
-          </div>
-        </div>
-        <div className="user-box">
-          <Link to="/lich-su" className="ghost-btn">
-            Lịch sử
-          </Link>
-          <div className="user-info">
-            <strong>{user?.full_name}</strong>
-            <span>@{user?.username}</span>
-          </div>
-          <button className="ghost-btn" onClick={logout}>
-            Đăng xuất
-          </button>
-        </div>
-      </header>
-
-      <main className="content">
+    <AppLayout
+      title="Thủ tục hành chính"
+      subtitle="Chọn thủ tục cần thử nghiệm bóc tách và điền hồ sơ"
+    >
+      <div className="content">
         <section className="list-pane">
           <div className="toolbar">
             <div className="search-box">
@@ -113,9 +93,9 @@ export default function ProceduresPage() {
                   >
                     <span className="radio" aria-hidden="true" />
                     <span className="procedure-label">{p.label}</span>
-                    {stats[p.key]?.labels ? (
-                      <span className="label-count" title="Đã hoàn thiện / Tổng nhãn">
-                        {stats[p.key].done}/{stats[p.key].labels} nhãn
+                    {stats[p.key]?.results ? (
+                      <span className="label-count" title="Đã hoàn thiện / Hồ sơ đang có trong hệ thống">
+                        {stats[p.key].done}/{stats[p.key].results} hồ sơ
                       </span>
                     ) : null}
                     {p.code && <span className="code-badge">{p.code}</span>}
@@ -145,12 +125,14 @@ export default function ProceduresPage() {
                   <dd>{selected.autoConfirm ? 'Có' : 'Không'}</dd>
                 </div>
                 <div>
-                  <dt>Nhãn đã gán</dt>
-                  <dd>{stats[selected.key]?.labels ?? 0}</dd>
+                  <dt>Hồ sơ trong hệ thống</dt>
+                  <dd>{stats[selected.key]?.results ?? 0}</dd>
                 </div>
                 <div>
-                  <dt>Đã hoàn thiện</dt>
-                  <dd>{stats[selected.key]?.done ?? 0}</dd>
+                  <dt>Đã gán nhãn</dt>
+                  <dd>
+                    {stats[selected.key]?.labels ?? 0} (hoàn thiện {stats[selected.key]?.done ?? 0})
+                  </dd>
                 </div>
               </dl>
               <a className="detail-link" href={selected.url} target="_blank" rel="noreferrer">
@@ -168,7 +150,7 @@ export default function ProceduresPage() {
                 className="ghost-btn full"
                 onClick={() => navigate(`/thu-tuc/${selected.key}/nhan`)}
               >
-                Gán nhãn / worklist ({stats[selected.key]?.done ?? 0}/{stats[selected.key]?.labels ?? 0})
+                Gán nhãn / worklist ({stats[selected.key]?.done ?? 0}/{stats[selected.key]?.results ?? 0})
               </button>
               <p className="hint">Tải hồ sơ lên để hệ thống bóc tách dữ liệu tự động.</p>
             </div>
@@ -179,7 +161,7 @@ export default function ProceduresPage() {
             </div>
           )}
         </aside>
-      </main>
-    </div>
+      </div>
+    </AppLayout>
   )
 }

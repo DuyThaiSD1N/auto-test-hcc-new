@@ -55,6 +55,25 @@ async def save_job(job: dict, provider: str) -> None:
         logger.exception("Khong luu duoc phien quet %s", job.get("jobId"))
 
 
+async def set_job_test_code(job_id: str, test_code: str | None) -> None:
+    """Ghi ma test cua phien quet.
+
+    Tach rieng khoi save_job vi nguon boc tach khong tra lai ma test trong cac lan
+    cap nhat sau; ghi chung se co luc ghi de bang None va mat ma.
+    """
+    db = get_db()
+    if db is None or not test_code:
+        return
+    try:
+        await db.jobs.update_one(
+            {"jobId": job_id},
+            {"$set": {"testCode": test_code}, "$setOnInsert": {"jobId": job_id, "savedAt": _now()}},
+            upsert=True,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Khong luu duoc ma test cua phien %s", job_id)
+
+
 async def save_item(item: dict, files: list[dict] | None = None) -> None:
     db = get_db()
     if db is None:
@@ -97,25 +116,31 @@ async def save_result(
     client_dossier_id: str | None,
     result: dict | None,
 ) -> None:
-    """Luu JSON boc tach. Goi lai nhieu lan cung khong tao ban ghi trung."""
+    """Luu JSON boc tach. Goi lai nhieu lan cung khong tao ban ghi trung.
+
+    Chi ghi de jobId/procedure/clientDossierId khi lan goi nay BIET gia tri.
+    Ly do: mot so nguon tra ket qua khong kem jobId (vd `/api/batch/items/{id}/result`
+    cua hang doi noi bo). Ghi de bang None se cat dut lien ket ho so <-> phien quet,
+    lam lich su tuong "chua co ket qua" va worklist gan nhan bo sot ho so.
+    """
     db = get_db()
     if db is None or not result:
         return
     fields = result.get("fields") or []
+    changes: dict[str, Any] = {"fieldCount": len(fields), "result": result, "savedAt": _now()}
+    for key, value in (
+        ("jobId", job_id),
+        ("procedure", procedure),
+        ("clientDossierId", client_dossier_id),
+    ):
+        if value:
+            changes[key] = value
+    # Khoa da nam trong $set thi khong duoc lap lai o $setOnInsert (Mongo bao loi)
+    defaults = {k: None for k in ("jobId", "procedure", "clientDossierId") if k not in changes}
     try:
         await db.results.update_one(
             {"itemId": item_id},
-            {
-                "$set": {
-                    "jobId": job_id,
-                    "procedure": procedure,
-                    "clientDossierId": client_dossier_id,
-                    "fieldCount": len(fields),
-                    "result": result,
-                    "savedAt": _now(),
-                },
-                "$setOnInsert": {"itemId": item_id},
-            },
+            {"$set": changes, "$setOnInsert": {"itemId": item_id, **defaults}},
             upsert=True,
         )
     except Exception:  # noqa: BLE001
@@ -130,8 +155,8 @@ async def save_results_page(job_id: str | None, results: list[dict], procedure: 
             continue
         await save_result(
             item_id,
-            job_id,
-            procedure,
+            entry.get("jobId") or job_id,
+            entry.get("procedure") or procedure,
             entry.get("clientDossierId"),
             entry.get("result"),
         )
@@ -158,9 +183,20 @@ async def get_job(job_id: str) -> dict | None:
     if job is None:
         return None
     items = [_clean(doc) async for doc in db.items.find({"jobId": job_id}).sort("createdAt", 1)]
-    done = {doc["itemId"] async for doc in db.results.find({"jobId": job_id}, {"itemId": 1})}
+    # Tim ket qua theo itemId chu khong theo jobId: ban ghi cu co the thieu jobId
+    ids = [item["itemId"] for item in items]
+    done = {
+        doc["itemId"]: doc.get("fieldCount") or 0
+        async for doc in db.results.find({"itemId": {"$in": ids}}, {"itemId": 1, "fieldCount": 1})
+    }
+    labeled = {
+        doc["itemId"]: doc.get("status") or "draft"
+        async for doc in db.labels.find({"itemId": {"$in": ids}}, {"itemId": 1, "status": 1})
+    }
     for item in items:
         item["hasResult"] = item["itemId"] in done
+        item["resultFieldCount"] = done.get(item["itemId"], 0)
+        item["labelStatus"] = labeled.get(item["itemId"])
     return {**_clean(job), "items": items}
 
 
@@ -173,13 +209,30 @@ async def get_result(item_id: str) -> dict | None:
 
 
 async def delete_job(job_id: str) -> dict:
+    """Xoa phien quet va MOI thu thuoc ve no: ho so, ket qua boc tach, nhan da gan.
+
+    Nhan luu theo itemId (khong kem jobId) nen phai lay danh sach ho so truoc roi
+    xoa theo do - neu khong, nhan cua phien da xoa se o lai va van bi dem vao
+    thong ke "so nhan" cua thu tuc.
+    """
     db = get_db()
     if db is None:
         return {"deleted": False}
+
+    item_ids = {doc["itemId"] async for doc in db.items.find({"jobId": job_id}, {"itemId": 1})}
+    item_ids |= {doc["itemId"] async for doc in db.results.find({"jobId": job_id}, {"itemId": 1})}
+
+    labels = 0
+    if item_ids:
+        labels = (await db.labels.delete_many({"itemId": {"$in": list(item_ids)}})).deleted_count
+        await db.results.delete_many({"itemId": {"$in": list(item_ids)}})
     await db.results.delete_many({"jobId": job_id})
     await db.items.delete_many({"jobId": job_id})
     res = await db.jobs.delete_one({"jobId": job_id})
-    return {"deleted": res.deleted_count > 0}
+    return {
+        "deleted": res.deleted_count > 0,
+        "removed": {"items": len(item_ids), "labels": labels},
+    }
 
 
 # ------------------------------------------------------ nhan da sua tay
@@ -227,23 +280,35 @@ async def get_label(item_id: str) -> dict | None:
 
 
 async def label_stats() -> dict:
-    """Dem so nhan da gan va so ket qua boc tach theo tung thu tuc."""
+    """Dem so nhan va so ket qua boc tach theo tung thu tuc.
+
+    CHI dem du lieu con trong he thong: mot ho so duoc tinh khi ket qua boc tach cua no
+    van con luu. Nhan cua ho so da bi xoa (con sot lai tu truoc khi xoa phien biet cuon
+    theo nhan) khong duoc tinh nua - neu khong, thu tuc se hien "0/1 nhan" trong khi
+    khong con ho so nao de mo ra xem.
+    """
     db = get_db()
     if db is None:
         return {"enabled": False, "byProcedure": {}}
+
+    # itemId -> thu tuc, lay tu ket qua con song
+    live: dict[str, str] = {}
+    async for row in db.results.find({}, {"itemId": 1, "procedure": 1}):
+        live[row["itemId"]] = row.get("procedure") or ""
+
     out: dict[str, dict] = {}
-    async for row in db.labels.aggregate([{"$group": {"_id": "$procedure", "n": {"$sum": 1}}}]):
-        out.setdefault(row["_id"] or "", {})["labels"] = row["n"]
-    async for row in db.labels.aggregate(
-        [{"$match": {"status": "done"}}, {"$group": {"_id": "$procedure", "n": {"$sum": 1}}}]
-    ):
-        out.setdefault(row["_id"] or "", {})["done"] = row["n"]
-    async for row in db.results.aggregate([{"$group": {"_id": "$procedure", "n": {"$sum": 1}}}]):
-        out.setdefault(row["_id"] or "", {})["results"] = row["n"]
-    for v in out.values():
-        v.setdefault("labels", 0)
-        v.setdefault("done", 0)
-        v.setdefault("results", 0)
+    for procedure in live.values():
+        out.setdefault(procedure, {"labels": 0, "done": 0, "results": 0})["results"] += 1
+
+    async for row in db.labels.find({}, {"itemId": 1, "procedure": 1, "status": 1}):
+        procedure = live.get(row["itemId"])
+        if procedure is None:
+            continue  # nhan mo coi: ho so da bi xoa khoi he thong
+        bucket = out.setdefault(procedure, {"labels": 0, "done": 0, "results": 0})
+        bucket["labels"] += 1
+        if row.get("status") == "done":
+            bucket["done"] += 1
+
     return {"enabled": True, "byProcedure": out}
 
 
@@ -261,19 +326,13 @@ async def list_labels(procedure: str, limit: int = 500) -> dict:
     async for lb in db.labels.find({"procedure": procedure}):
         labels[lb["itemId"]] = lb
 
-    # Ho so da boc tach cua thu tuc (nguon de gan nhan)
+    # Ho so da boc tach cua thu tuc - day la nguon duy nhat de dung worklist.
+    # Nhan cua ho so khong con ket qua (phien da bi xoa) khong hien va khong dem:
+    # giu lai chi lam sai con so tien do.
     rows: list[dict] = []
-    seen: set[str] = set()
     async for r in db.results.find({"procedure": procedure}).sort("savedAt", -1):
         iid = r["itemId"]
-        seen.add(iid)
-        lb = labels.get(iid)
-        rows.append(_worklist_row(iid, r, lb))
-
-    # Nhan cho ho so ma ket qua da bi xoa -> van hien de khong mat nhan
-    for iid, lb in labels.items():
-        if iid not in seen:
-            rows.append(_worklist_row(iid, None, lb))
+        rows.append(_worklist_row(iid, r, labels.get(iid)))
 
     order = {"pending": 0, "draft": 1, "done": 2}
     rows.sort(key=lambda x: (order.get(x["status"], 9), x["clientDossierId"] or ""))
