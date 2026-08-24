@@ -1,6 +1,8 @@
 import { Link, NavLink } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useAuth } from '../auth/AuthContext'
+import { homePath } from '../auth/home'
+import Logo from './Logo'
 
 /**
  * Khung chung của mọi trang sau khi đăng nhập: thanh điều hướng bên trái +
@@ -23,6 +25,7 @@ export default function AppLayout({
 }) {
   const { user, logout } = useAuth()
   const isAdmin = user?.role === 'admin'
+  const isUploader = user?.role === 'uploader'
 
   const initials = (user?.full_name || user?.username || '?')
     .split(/\s+/)
@@ -36,8 +39,10 @@ export default function AppLayout({
       <aside className="sidebar">
         {/* Logo góc trái = lối về trang chủ (danh sách thủ tục), thay cho nút
             "Chọn thủ tục khác" trước đây nằm rải rác trong từng trang */}
-        <Link to="/thu-tuc" className="sidebar-brand" title="Về trang chủ">
-          <div className="brand-mark">AT</div>
+        <Link to={homePath(user)} className="sidebar-brand" title="Về trang chủ">
+          <div className="brand-mark">
+            <Logo />
+          </div>
           <div>
             <strong>Auto Test</strong>
             <span>Hành chính công</span>
@@ -45,9 +50,16 @@ export default function AppLayout({
         </Link>
 
         <nav className="sidebar-nav">
-          <div className="sidebar-section">Thử nghiệm</div>
-          <NavItem to="/thu-tuc" label="Thủ tục" icon={<IconList />} />
-          <NavItem to="/lich-su" label="Lịch sử" icon={<IconHistory />} />
+          {/* Tài khoản chuyên tải tài liệu chỉ có một việc: bỏ hồ sơ vào kho */}
+          {!isUploader && (
+            <>
+              <div className="sidebar-section">Thử nghiệm</div>
+              <NavItem to="/thu-tuc" label="Thủ tục" icon={<IconList />} />
+              <NavItem to="/lich-su" label="Lịch sử" icon={<IconHistory />} />
+            </>
+          )}
+          <div className="sidebar-section">Tài liệu</div>
+          <NavItem to="/kho-tai-lieu" label="Kho tài liệu" icon={<IconFolder />} />
           {isAdmin && (
             <>
               <div className="sidebar-section">Quản trị</div>
@@ -61,7 +73,8 @@ export default function AppLayout({
           <div className="who">
             <strong>{user?.full_name}</strong>
             <span>
-              @{user?.username} · {isAdmin ? 'Quản trị' : 'Người dùng'}
+              @{user?.username} ·{' '}
+              {isAdmin ? 'Quản trị' : isUploader ? 'Tải tài liệu' : 'Người dùng'}
             </span>
           </div>
           <button className="icon-btn" onClick={logout} title="Đăng xuất">
@@ -118,6 +131,14 @@ function IconUsers() {
       <path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1" />
       <circle cx="9" cy="7" r="3.2" />
       <path d="M22 19v-1a4 4 0 0 0-3-3.9M16.5 4.2a3.2 3.2 0 0 1 0 5.9" />
+    </svg>
+  )
+}
+
+function IconFolder() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
     </svg>
   )
 }

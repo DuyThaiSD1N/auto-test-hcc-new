@@ -10,7 +10,6 @@ import type {
   Procedure,
 } from '../api/types'
 import { eformUrl } from '../eform/registry'
-import { useAuth } from '../auth/AuthContext'
 import AppLayout from '../components/AppLayout'
 
 /** Dữ liệu đã điền của một hồ sơ: nhãn đã sửa tay nếu có, không thì JSON bóc tách */
@@ -48,7 +47,6 @@ function duration(from: string | null | undefined, to: string | null | undefined
 }
 
 export default function HistoryPage() {
-  const { user } = useAuth()
   const navigate = useNavigate()
 
   const [jobs, setJobs] = useState<HistoryJob[]>([])
@@ -57,15 +55,23 @@ export default function HistoryPage() {
   const [error, setError] = useState<string | null>(null)
   const [openJob, setOpenJob] = useState<HistoryJobDetail | null>(null)
   const [procFilter, setProcFilter] = useState('')
+  // Tìm theo mã test / tên phiên / jobId
+  const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
   const [procList, setProcList] = useState<Procedure[]>([])
 
   const [openItem, setOpenItem] = useState<string | null>(null)
   const [filled, setFilled] = useState<Record<string, FilledData | 'dang-tai'>>({})
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(query), 300)
+    return () => clearTimeout(timer)
+  }, [query])
+
   const load = useCallback(() => {
     setLoading(true)
     api
-      .historyJobs(200, procFilter)
+      .historyJobs(200, procFilter, debounced)
       .then((res) => {
         setJobs(res.items)
         setEnabled(res.enabled)
@@ -73,7 +79,7 @@ export default function HistoryPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Không tải được lịch sử'))
       .finally(() => setLoading(false))
-  }, [procFilter])
+  }, [procFilter, debounced])
 
   useEffect(load, [load])
 
@@ -144,17 +150,8 @@ export default function HistoryPage() {
     }
   }
 
-  async function remove(jobId: string) {
-    try {
-      await api.deleteHistoryJob(jobId)
-      if (openJob?.jobId === jobId) setOpenJob(null)
-      load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không xóa được phiên')
-    }
-  }
-
-  const isAdmin = user?.role === 'admin'
+  // Lịch sử phiên là dữ liệu chỉ-đọc: không có nút xóa ở đây nữa.
+  // Muốn dọn hồ sơ chưa gán nhãn thì làm ở worklist gán nhãn của thủ tục.
 
   return (
     <AppLayout
@@ -162,6 +159,13 @@ export default function HistoryPage() {
       subtitle="Đã điền những gì, chạy ra sao, hồ sơ nào lỗi"
       actions={
         <>
+          <input
+            type="search"
+            className="search-inline"
+            placeholder="Tìm mã test, tên phiên…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <label className="filter-inline">
             <span>Thủ tục:</span>
             <select value={procFilter} onChange={(e) => setProcFilter(e.target.value)}>
@@ -246,15 +250,6 @@ export default function HistoryPage() {
                         <button className="ghost-btn" onClick={() => toggle(job.jobId)}>
                           {openJob?.jobId === job.jobId ? 'Ẩn' : 'Xem chi tiết'}
                         </button>
-                        {isAdmin && (
-                          <button
-                            className="ghost-btn danger"
-                            onClick={() => remove(job.jobId)}
-                            title="Xóa phiên và toàn bộ kết quả đã lưu"
-                          >
-                            Xóa
-                          </button>
-                        )}
                       </td>
                     </tr>
                   ))}

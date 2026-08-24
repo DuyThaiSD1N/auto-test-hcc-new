@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { homePath } from '../auth/home'
+import Logo from '../components/Logo'
 
 export default function LoginPage() {
   const { user, login } = useAuth()
@@ -14,15 +16,15 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  if (user) return <Navigate to="/thu-tuc" replace />
+  if (user) return <Navigate to={homePath(user)} replace />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setSubmitting(true)
     try {
-      await login(username, password)
-      const from = (location.state as { from?: string } | null)?.from ?? '/thu-tuc'
+      const signedIn = await login(username, password)
+      const from = (location.state as { from?: string } | null)?.from ?? homePath(signedIn)
       navigate(from, { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại')
@@ -35,7 +37,9 @@ export default function LoginPage() {
     <div className="login-shell">
       <div className="login-card">
         <div className="brand">
-          <div className="brand-mark">AT</div>
+          <div className="brand-mark">
+            <Logo />
+          </div>
           <div>
             <h1>Auto Test Hành chính công</h1>
             <p>Hệ thống thử nghiệm tự động điền hồ sơ dịch vụ công</p>

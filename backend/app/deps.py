@@ -43,6 +43,31 @@ async def require_admin(
     return current_user
 
 
+async def require_uploader(
+    current_user: UserOut = Depends(get_current_user),
+) -> UserOut:
+    """Them/xoa ho so trong kho tai lieu: tai khoan chuyen upload hoac quan tri."""
+    if current_user.role not in ("uploader", "admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Thao tac nay danh cho tai khoan chuyen tai tai lieu.",
+        )
+    return current_user
+
+
+async def require_scanner(
+    current_user: UserOut = Depends(get_current_user),
+) -> UserOut:
+    """Chay phien quet (ton mot luot OCR + LLM moi ho so): khong danh cho tai khoan
+    chuyen tai tai lieu - viec cua ho chi la bo ho so vao kho."""
+    if current_user.role == "uploader":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tai khoan tai tai lieu chi lam viec o kho tai lieu.",
+        )
+    return current_user
+
+
 async def get_user_allow_query_token(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     token: str | None = Query(default=None),

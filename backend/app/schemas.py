@@ -34,7 +34,7 @@ class SaveUserRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str | None = Field(default=None, max_length=128)
     full_name: str | None = Field(default=None, max_length=120, alias="fullName")
-    role: str = Field(default="tester", pattern="^(admin|tester)$")
+    role: str = Field(default="tester", pattern="^(admin|tester|uploader)$")
 
     model_config = {"populate_by_name": True}
 

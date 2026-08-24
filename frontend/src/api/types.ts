@@ -167,15 +167,38 @@ export interface LabelRecord {
   fields: BatchField[]
   fieldCount: number
   status: LabelStatus
+  /** Loại lỗi — luôn rỗng khi hồ sơ đã hoàn thiện */
+  issues?: string[]
+  /** Nhận xét của người gán nhãn */
+  note?: string | null
   labeledBy: string | null
   labeledAt: string
 }
 
-export type LabelStatus = 'pending' | 'draft' | 'done'
+export type LabelStatus = 'pending' | 'draft' | 'error' | 'done'
+
+/** Loại lỗi gán cho hồ sơ khi lưu ở trạng thái "lỗi" */
+export type IssueKind =
+  | 'dien-sai'
+  | 'dien-thieu'
+  | 'ocr-sai'
+  | 'sai-chu-the'
+  | 'khong-uu-tien'
+
+export const ISSUE_LABEL: Record<string, string> = {
+  'dien-sai': 'Điền sai',
+  'dien-thieu': 'Điền thiếu',
+  'ocr-sai': 'OCR sai thông tin',
+  'sai-chu-the': 'Điền sai chủ thể',
+  'khong-uu-tien': 'Không ưu tiên',
+}
 
 export interface LabelStats {
   enabled: boolean
-  byProcedure: Record<string, { labels: number; results: number; done: number }>
+  byProcedure: Record<
+    string,
+    { labels: number; results: number; done: number; errors?: number }
+  >
 }
 
 export interface WorklistItem {
@@ -188,12 +211,14 @@ export interface WorklistItem {
   labelFieldCount: number
   labeledBy: string | null
   labeledAt: string | null
+  issues: string[]
+  note: string | null
 }
 
 export interface WorklistResponse {
   enabled: boolean
   total: number
-  counts: { total: number; pending: number; draft: number; done: number }
+  counts: { total: number; pending: number; draft: number; error: number; done: number }
   items: WorklistItem[]
 }
 
@@ -222,4 +247,46 @@ export interface AccountRow {
 export interface AccountListResponse {
   enabled: boolean
   items: AccountRow[]
+}
+
+/** Văn bản OCR của một hồ sơ, đọc từ trace của nguồn bóc tách */
+export interface ItemOcr {
+  available: boolean
+  reason?: string
+  requestId?: string
+  ocrText?: string
+  provider?: string | null
+  chars?: number
+  createdAt?: string | null
+}
+
+// ---- Kho tài liệu (tài khoản chuyên upload bỏ hồ sơ vào) ----
+
+export interface PoolFile {
+  name: string
+  type: string
+  bytes: number
+  fileId: string
+}
+
+export interface PoolItem {
+  poolId: string
+  procedure: string
+  clientDossierId: string
+  note: string | null
+  files: PoolFile[]
+  fileCount: number
+  totalBytes: number
+  uploadedBy: string
+  uploadedAt: string
+  /** Đã dùng để chạy bóc tách bao nhiêu lần — không khóa, chạy lại thoải mái */
+  useCount: number
+  lastUsedAt: string | null
+  lastJobId: string | null
+}
+
+export interface PoolListResponse {
+  enabled: boolean
+  total: number
+  items: PoolItem[]
 }

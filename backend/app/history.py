@@ -9,6 +9,7 @@ Moi ham deu tu bo qua khi chua bat Mongo, nen phan goi khong can kiem tra truoc.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -164,11 +165,18 @@ async def save_results_page(job_id: str | None, results: list[dict], procedure: 
 
 # ------------------------------------------------------------------ doc
 
-async def list_jobs(limit: int = 50, skip: int = 0, procedure: str | None = None) -> dict:
+async def list_jobs(
+    limit: int = 50, skip: int = 0, procedure: str | None = None, q: str | None = None
+) -> dict:
+    """Danh sach phien quet. `q` tim theo ma test, ten phien hoac jobId."""
     db = get_db()
     if db is None:
         return {"total": 0, "items": [], "enabled": False}
-    query = {"procedure": procedure} if procedure else {}
+    query: dict = {"procedure": procedure} if procedure else {}
+    if q and q.strip():
+        # re.escape de nguoi dung go dau cham/gach cung khong thanh regex
+        needle = {"$regex": re.escape(q.strip()), "$options": "i"}
+        query["$or"] = [{"testCode": needle}, {"name": needle}, {"jobId": needle}]
     total = await db.jobs.count_documents(query)
     cursor = db.jobs.find(query).sort("savedAt", -1).skip(skip).limit(limit)
     jobs = [_clean(doc) async for doc in cursor]
@@ -237,6 +245,12 @@ async def delete_job(job_id: str) -> dict:
 
 # ------------------------------------------------------ nhan da sua tay
 
+# Loai loi gan cho mot ho so khi luu o trang thai "error"
+ISSUE_KINDS = ("dien-sai", "dien-thieu", "ocr-sai", "sai-chu-the", "khong-uu-tien")
+
+LABEL_STATUSES = ("draft", "error", "done")
+
+
 async def save_label(
     item_id: str,
     job_id: str | None,
@@ -245,12 +259,30 @@ async def save_label(
     fields: list[dict],
     labeled_by: str | None,
     status: str = "draft",
+    note: str | None = None,
+    issues: list[str] | None = None,
 ) -> dict:
-    """Luu nhan ket qua dung. status = "draft" (dang sua) hoac "done" (hoan thien)."""
+    """Luu nhan ket qua dung.
+
+    status:
+        draft - dang sua
+        error - da xem va thay SAI, kem loai loi (issues) + nhan xet (note)
+        done  - da sua xong, hoan thien
+
+    Ho so hoan thien thi KHONG con tag loi: sua xong roi thi cai tag do khong con dung nua,
+    de lai chi lam thong ke sai. Nhan xet van giu de biet truoc do vuong gi.
+    """
     db = get_db()
     if db is None:
-        return {"saved": False, "reason": "Chua bat MongoDB nen khong luu duoc nhan."}
-    status = "done" if status == "done" else "draft"
+        return {"saved": False, "code": 503, "reason": "Chua bat MongoDB nen khong luu duoc nhan."}
+
+    status = status if status in LABEL_STATUSES else "draft"
+    clean_issues = [i for i in (issues or []) if i in ISSUE_KINDS]
+    if status == "done":
+        clean_issues = []
+    if status == "error" and not clean_issues:
+        return {"saved": False, "code": 400, "reason": "Luu loi thi phai chon it nhat mot loai loi."}
+
     await db.labels.update_one(
         {"itemId": item_id},
         {
@@ -261,6 +293,8 @@ async def save_label(
                 "fields": fields,
                 "fieldCount": len(fields),
                 "status": status,
+                "issues": clean_issues,
+                "note": (note or "").strip() or None,
                 "labeledBy": labeled_by,
                 "labeledAt": _now(),
             },
@@ -268,7 +302,51 @@ async def save_label(
         },
         upsert=True,
     )
-    return {"saved": True, "status": status}
+    return {"saved": True, "status": status, "issues": clean_issues}
+
+
+async def delete_result(item_id: str) -> dict:
+    """Xoa ket qua boc tach cua mot ho so CHUA gan nhan.
+
+    Ho so da co nhan thi khong xoa thang - phai bo nhan truoc, tranh mat cong da lam.
+    """
+    db = get_db()
+    if db is None:
+        return {"deleted": False, "code": 503, "reason": "Chua bat MongoDB."}
+    if await db.labels.find_one({"itemId": item_id}, {"_id": 1}):
+        return {
+            "deleted": False,
+            "code": 409,
+            "reason": "Ho so nay da gan nhan - xoa nhan truoc roi hay xoa ho so.",
+        }
+    res = await db.results.delete_one({"itemId": item_id})
+    return {"deleted": res.deleted_count > 0}
+
+
+async def delete_unlabeled_results(procedure: str) -> dict:
+    """Xoa MOI ho so chua gan nhan cua mot thu tuc. Tra ve so ban ghi da xoa."""
+    db = get_db()
+    if db is None:
+        return {"deleted": 0, "code": 503, "reason": "Chua bat MongoDB."}
+    labeled = {doc["itemId"] async for doc in db.labels.find({}, {"itemId": 1})}
+    ids = [
+        doc["itemId"]
+        async for doc in db.results.find({"procedure": procedure}, {"itemId": 1})
+        if doc["itemId"] not in labeled
+    ]
+    if not ids:
+        return {"deleted": 0}
+    res = await db.results.delete_many({"itemId": {"$in": ids}})
+    return {"deleted": res.deleted_count}
+
+
+async def delete_label(item_id: str) -> dict:
+    """Xoa nhan cua mot ho so. Ket qua boc tach van con, ho so tro lai trang thai "chua gan"."""
+    db = get_db()
+    if db is None:
+        return {"deleted": False, "reason": "Chua bat MongoDB."}
+    res = await db.labels.delete_one({"itemId": item_id})
+    return {"deleted": res.deleted_count > 0}
 
 
 async def get_label(item_id: str) -> dict | None:
@@ -298,16 +376,18 @@ async def label_stats() -> dict:
 
     out: dict[str, dict] = {}
     for procedure in live.values():
-        out.setdefault(procedure, {"labels": 0, "done": 0, "results": 0})["results"] += 1
+        out.setdefault(procedure, {"labels": 0, "done": 0, "errors": 0, "results": 0})["results"] += 1
 
     async for row in db.labels.find({}, {"itemId": 1, "procedure": 1, "status": 1}):
         procedure = live.get(row["itemId"])
         if procedure is None:
             continue  # nhan mo coi: ho so da bi xoa khoi he thong
-        bucket = out.setdefault(procedure, {"labels": 0, "done": 0, "results": 0})
+        bucket = out.setdefault(procedure, {"labels": 0, "done": 0, "errors": 0, "results": 0})
         bucket["labels"] += 1
         if row.get("status") == "done":
             bucket["done"] += 1
+        elif row.get("status") == "error":
+            bucket["errors"] += 1
 
     return {"enabled": True, "byProcedure": out}
 
@@ -334,12 +414,13 @@ async def list_labels(procedure: str, limit: int = 500) -> dict:
         iid = r["itemId"]
         rows.append(_worklist_row(iid, r, labels.get(iid)))
 
-    order = {"pending": 0, "draft": 1, "done": 2}
+    order = {"error": 0, "pending": 1, "draft": 2, "done": 3}
     rows.sort(key=lambda x: (order.get(x["status"], 9), x["clientDossierId"] or ""))
     counts = {
         "total": len(rows),
         "pending": sum(1 for x in rows if x["status"] == "pending"),
         "draft": sum(1 for x in rows if x["status"] == "draft"),
+        "error": sum(1 for x in rows if x["status"] == "error"),
         "done": sum(1 for x in rows if x["status"] == "done"),
     }
     return {"enabled": True, "total": len(rows), "counts": counts, "items": rows[:limit]}
@@ -357,4 +438,6 @@ def _worklist_row(item_id: str, result: dict | None, label: dict | None) -> dict
         "labelFieldCount": (label or {}).get("fieldCount", 0),
         "labeledBy": (label or {}).get("labeledBy"),
         "labeledAt": (label or {}).get("labeledAt"),
+        "issues": (label or {}).get("issues") or [],
+        "note": (label or {}).get("note"),
     }

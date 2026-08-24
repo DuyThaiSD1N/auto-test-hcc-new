@@ -59,6 +59,11 @@
   box-sizing: border-box;
 }
 
+/* display cua .ghost-btn/.chip de len [hidden] cua trinh duyet -> ep an han */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body,
 #root {
@@ -318,6 +323,11 @@ select:disabled {
   font-weight: 700;
   letter-spacing: 0.02em;
   box-shadow: 0 6px 16px rgba(37, 99, 235, 0.32);
+}
+
+.brand-mark svg {
+  width: 68%;
+  height: 68%;
 }
 
 .brand h1 {
@@ -1298,6 +1308,148 @@ select:disabled {
   background: #0b1220;
 }
 
+/* Tab JSON xep hai khoi: tren la OCR (ban quet doc ra gi), duoi la JSON boc tach */
+.json-stack {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #0b1220;
+}
+
+.json-box {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mac dinh chia gan doi; bam "Phong to" thi mot khoi chiem het, khoi kia con thanh tieu de */
+.json-box.ocr {
+  flex: 0 0 46%;
+  border-bottom: 1px solid #1e293b;
+}
+
+.json-stack.chi-ocr .json-box.ocr,
+.json-stack.chi-json .json-box:not(.ocr) {
+  flex: 1;
+}
+
+.json-stack.chi-ocr .json-box:not(.ocr) .json-view,
+.json-stack.chi-json .json-box.ocr .json-view,
+.json-stack.chi-json .json-box.ocr .ocr-empty {
+  display: none;
+}
+
+.json-stack.chi-ocr .json-box:not(.ocr),
+.json-stack.chi-json .json-box.ocr {
+  flex: 0 0 auto;
+}
+
+/* Van ban OCR la thu de doc, khong phai code: chu sang hon, dong thua hon */
+.json-box.ocr .json-view pre {
+  color: #e8eefb;
+  font-size: 13.5px;
+  line-height: 1.8;
+  padding: 16px 20px;
+}
+
+.json-box-tools {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.json-box-tools .ghost-btn {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: transparent;
+  border-color: #2b3a52;
+  color: #cbd5e1;
+}
+
+.json-box-tools .ghost-btn:hover {
+  background: #1e293b;
+  border-color: #475569;
+  color: #fff;
+}
+
+.json-box-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 18px;
+  background: #111c2e;
+  border-bottom: 1px solid #1e293b;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+/* Khong lay duoc OCR: noi ro ly do, dung de lan vao khoi JSON ben duoi */
+.ocr-empty {
+  padding: 14px 18px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.ocr-empty strong {
+  display: block;
+  color: #fbbf24;
+  margin-bottom: 4px;
+}
+
+.ocr-empty p {
+  margin: 0 0 10px;
+  max-width: 78ch;
+  line-height: 1.55;
+}
+
+.ocr-empty code {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+.ocr-empty .ghost-btn {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  background: transparent;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+
+.ocr-empty .ghost-btn:hover {
+  background: #1e293b;
+  border-color: #475569;
+  color: #fff;
+}
+
+.ocr-empty-note {
+  margin-top: 14px !important;
+  padding-top: 12px;
+  border-top: 1px solid #1e293b;
+  color: #7f8ea8;
+}
+
+.ocr-empty pre {
+  margin: 0;
+  font: 12.5px/1.6 'Cascadia Mono', Consolas, monospace;
+  color: #7f8ea8;
+  white-space: pre-wrap;
+}
+
+.json-box-note {
+  flex-basis: 100%;
+  color: #7f8ea8;
+  font-size: 12px;
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  text-align: right;
+  word-break: break-word;
+}
+
 .json-view pre {
   margin: 0;
   padding: 18px;
@@ -1469,8 +1621,291 @@ select:disabled {
 
   .doc-frame,
   .eform-frame,
-  .json-view {
+  .json-stack {
     height: 60vh;
     flex: none;
   }
+}
+
+/* ---------- Chon ho so tu kho tai lieu ---------- */
+
+.mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.pool-picker {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.pool-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.pool-picker-head strong {
+  font-size: 13.5px;
+}
+
+.pool-picker-head .ghost-btn {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 12.5px;
+  margin-left: auto;
+}
+
+.pool-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.pool-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 0.14s, box-shadow 0.14s, background 0.14s;
+}
+
+.pool-card:hover {
+  border-color: var(--primary-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.pool-card.picked {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.pool-check {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+  border: 2px solid var(--border-strong);
+  border-radius: 5px;
+  transition: border-color 0.14s, background 0.14s;
+}
+
+.pool-card.picked .pool-check {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: inset 0 0 0 2px #fff;
+}
+
+.pool-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pool-body strong {
+  font-size: 13.5px;
+  word-break: break-word;
+}
+
+.pool-body .muted-small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Nhan xet & loai loi khi gan nhan ---------- */
+
+.issue-box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 8px 12px;
+}
+
+.issue-box summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.issue-box summary::-webkit-details-marker {
+  display: none;
+}
+
+.issue-box summary::before {
+  content: '▸';
+  color: var(--muted);
+  transition: transform 0.14s;
+}
+
+.issue-box[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.issue-count {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-pill);
+  padding: 0 7px;
+  font-size: 11px;
+}
+
+.issue-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 8px;
+}
+
+.issue-tag {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: var(--radius-pill);
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background 0.14s, border-color 0.14s, color 0.14s;
+}
+
+.issue-tag:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.issue-tag.on {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+  color: var(--danger);
+}
+
+.issue-note {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  font-size: 13px;
+}
+
+.badge-issue {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-pill);
+  padding: 3px 11px;
+}
+
+.status-pill.s-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.issue-chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  margin: 2px 4px 0 0;
+}
+
+/* ---------- O tim thu tuc khi dua ho so vao kho ---------- */
+
+.proc-chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+}
+
+.proc-chosen strong {
+  font-size: 14px;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.proc-chosen .ghost-btn {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 12.5px;
+  flex: none;
+}
+
+.proc-search input {
+  width: 100%;
+  height: 40px;
+}
+
+.proc-results {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.proc-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+
+.proc-option:last-child {
+  border-bottom: none;
+}
+
+.proc-option:hover {
+  background: var(--surface-2);
+}
+
+.proc-option.active {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-weight: 550;
+}
+
+.search-inline {
+  height: 34px;
+  min-width: 220px;
 }

@@ -2,12 +2,15 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { BatchField, LabelStatus, Procedure, WorklistItem, WorklistResponse } from '../api/types'
+import { ISSUE_LABEL } from '../api/types'
 import FieldsEditor from '../components/FieldsEditor'
 import AppLayout from '../components/AppLayout'
+import { useAuth } from '../auth/AuthContext'
 
 const STATUS_LABEL: Record<LabelStatus, string> = {
   pending: 'Chưa gán',
   draft: 'Đang sửa',
+  error: 'Lỗi',
   done: 'Hoàn thiện',
 }
 
@@ -22,6 +25,8 @@ type Filter = 'all' | LabelStatus
 export default function LabelsPage() {
   const { key = '' } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
 
   const [procedure, setProcedure] = useState<Procedure | null>(null)
   const [data, setData] = useState<WorklistResponse | null>(null)
@@ -32,6 +37,8 @@ export default function LabelsPage() {
   // Dòng đang mở để sửa: itemId -> trạng thái sửa
   const [editing, setEditing] = useState<string | null>(null)
   const [editFields, setEditFields] = useState<BatchField[]>([])
+  const [editNote, setEditNote] = useState('')
+  const [editIssues, setEditIssues] = useState<string[]>([])
   const [editLoading, setEditLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -58,12 +65,14 @@ export default function LabelsPage() {
     return filter === 'all' ? all : all.filter((x) => x.status === filter)
   }, [data, filter])
 
-  const counts = data?.counts ?? { total: 0, pending: 0, draft: 0, done: 0 }
+  const counts = data?.counts ?? { total: 0, pending: 0, draft: 0, error: 0, done: 0 }
   const percent = counts.total ? Math.round((counts.done / counts.total) * 100) : 0
 
   // ------------------------------------------------------------ sửa tại chỗ
 
   async function openEdit(it: WorklistItem) {
+    setEditNote(it.note ?? '')
+    setEditIssues(it.issues ?? [])
     if (editing === it.itemId) {
       setEditing(null)
       return
@@ -86,7 +95,52 @@ export default function LabelsPage() {
     }
   }
 
-  async function persist(it: WorklistItem, status: 'draft' | 'done') {
+  /** Xóa hẳn một hồ sơ CHƯA gán nhãn khỏi worklist (chỉ admin) */
+  async function removeItem(it: WorklistItem) {
+    setError(null)
+    try {
+      await api.deleteItemResult(it.itemId)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không xóa được hồ sơ')
+    }
+  }
+
+  /** Xóa tất cả hồ sơ chưa gán nhãn của thủ tục này (chỉ admin) */
+  async function removeAllUnlabeled() {
+    const pending = counts.pending
+    if (!pending) return
+    if (!window.confirm(`Xóa ${pending} hồ sơ chưa gán nhãn của thủ tục này? Không lấy lại được.`)) {
+      return
+    }
+    setError(null)
+    try {
+      const res = await api.deleteUnlabeled(key)
+      setError(null)
+      load()
+      if (!res.deleted) setError('Không có hồ sơ nào để xóa.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không xóa được hồ sơ')
+    }
+  }
+
+  /** Bỏ nhãn của một hồ sơ (chỉ admin): kết quả bóc tách giữ nguyên, hồ sơ về "Chưa gán". */
+  async function removeLabel(it: WorklistItem) {
+    setError(null)
+    try {
+      await api.deleteLabel(it.itemId)
+      if (editing === it.itemId) setEditing(null)
+      load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không xóa được nhãn')
+    }
+  }
+
+  async function persist(it: WorklistItem, status: 'draft' | 'error' | 'done') {
+    if (status === 'error' && editIssues.length === 0) {
+      setError('Chọn ít nhất một loại lỗi trước khi lưu lỗi.')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -95,6 +149,9 @@ export default function LabelsPage() {
         procedure: key,
         clientDossierId: it.clientDossierId,
         status,
+        note: editNote,
+        // Hoàn thiện thì bỏ tag lỗi
+        issues: status === 'done' ? [] : editIssues,
       })
       setEditing(null)
       load()
@@ -114,6 +171,15 @@ export default function LabelsPage() {
           <Link to={`/thu-tuc/${key}`} className="ghost-btn">
             Quét hồ sơ mới
           </Link>
+          {isAdmin && counts.pending > 0 && (
+            <button
+              className="ghost-btn danger"
+              onClick={removeAllUnlabeled}
+              title="Xóa mọi hồ sơ chưa gán nhãn của thủ tục này"
+            >
+              Xóa {counts.pending} hồ sơ chưa gán
+            </button>
+          )}
           <button className="ghost-btn" onClick={load}>
             Tải lại
           </button>
@@ -154,6 +220,12 @@ export default function LabelsPage() {
                 onClick={() => setFilter('draft')}
               >
                 Đang sửa {counts.draft}
+              </button>
+              <button
+                className={`chip${filter === 'error' ? ' active' : ''}`}
+                onClick={() => setFilter('error')}
+              >
+                Lỗi {counts.error}
               </button>
               <button
                 className={`chip${filter === 'done' ? ' active' : ''}`}
@@ -197,6 +269,16 @@ export default function LabelsPage() {
                             <span className={`status-pill s-${it.status}`}>
                               {STATUS_LABEL[it.status]}
                             </span>
+                            {it.issues.length > 0 && (
+                              <div>
+                                {it.issues.map((k) => (
+                                  <span className="issue-chip" key={k}>
+                                    {ISSUE_LABEL[k] ?? k}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {it.note && <div className="muted-small">{it.note}</div>}
                           </td>
                           <td>{it.labeled ? it.labelFieldCount : it.resultFieldCount}</td>
                           <td>{it.labeledBy ?? '—'}</td>
@@ -215,6 +297,24 @@ export default function LabelsPage() {
                             >
                               Form + JSON
                             </button>
+                            {isAdmin && it.labeled && (
+                              <button
+                                className="ghost-btn danger"
+                                onClick={() => removeLabel(it)}
+                                title="Bỏ nhãn, hồ sơ quay về trạng thái Chưa gán"
+                              >
+                                Xóa nhãn
+                              </button>
+                            )}
+                            {isAdmin && !it.labeled && (
+                              <button
+                                className="ghost-btn danger"
+                                onClick={() => removeItem(it)}
+                                title="Xóa hẳn hồ sơ chưa gán nhãn này khỏi worklist"
+                              >
+                                Xóa hồ sơ
+                              </button>
+                            )}
                           </td>
                         </tr>
                         {open && (
@@ -225,6 +325,31 @@ export default function LabelsPage() {
                               ) : (
                                 <div className="inline-edit">
                                   <FieldsEditor fields={editFields} onChange={setEditFields} />
+
+                                  <div className="issue-tags">
+                                    {Object.entries(ISSUE_LABEL).map(([kind, label]) => (
+                                      <button
+                                        key={kind}
+                                        className={`issue-tag${editIssues.includes(kind) ? ' on' : ''}`}
+                                        onClick={() =>
+                                          setEditIssues((prev) =>
+                                            prev.includes(kind)
+                                              ? prev.filter((k) => k !== kind)
+                                              : [...prev, kind],
+                                          )
+                                        }
+                                      >
+                                        {label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <textarea
+                                    className="issue-note"
+                                    placeholder="Nhận xét: sai ở trường nào, vì sao…"
+                                    value={editNote}
+                                    onChange={(e) => setEditNote(e.target.value)}
+                                  />
+
                                   <div className="label-actions row">
                                     <button
                                       className="ghost-btn"
@@ -232,6 +357,14 @@ export default function LabelsPage() {
                                       disabled={saving}
                                     >
                                       Lưu nháp
+                                    </button>
+                                    <button
+                                      className="ghost-btn danger"
+                                      onClick={() => persist(it, 'error')}
+                                      disabled={saving}
+                                      title="Đánh dấu hồ sơ này sai, kèm loại lỗi đã chọn"
+                                    >
+                                      Lưu lỗi
                                     </button>
                                     <button
                                       className="primary-btn inline"

@@ -2,9 +2,17 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import AppLayout from '../components/AppLayout'
 import { eformUrl } from '../eform/registry'
-import { api, normalizeTestCode, testCodeStore } from '../api/client'
+import { api } from '../api/client'
 import { displayFieldValue } from '../api/fieldValue'
-import type { BatchItem, BatchJob, BatchResult, ItemStatus, Procedure } from '../api/types'
+import { readDropped } from '../upload/dropFolders'
+import type {
+  BatchItem,
+  BatchJob,
+  BatchResult,
+  ItemStatus,
+  PoolItem,
+  Procedure,
+} from '../api/types'
 
 type Phase = 'chuan-bi' | 'dang-tai' | 'dang-quet' | 'xong'
 
@@ -16,7 +24,14 @@ interface Dossier {
   itemId?: string
   status: ItemStatus | 'moi' | 'dang-tai'
   error?: string | null
+  /** Có giá trị = hồ sơ lấy từ kho tài liệu, file đã nằm sẵn trên máy chủ */
+  poolId?: string
+  /** Tên file của hồ sơ lấy từ kho (trình duyệt không giữ File thật) */
+  poolFiles?: string[]
+  poolBytes?: number
 }
+
+type Mode = 'kho' | 'tu-tai-len'
 
 // Dự phòng khi chưa hỏi được backend; danh sách thật lấy từ /api/batch/status
 const FALLBACK_SUFFIXES = ['.pdf', '.jpg', '.jpeg', '.png', '.docx']
@@ -37,11 +52,17 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: 'Đã hủy',
 }
 
-/** Mã test mặc định theo thời điểm mở trang: TEST-20260823-1430 */
-function defaultTestCode(): string {
-  const now = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `TEST-${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}`
+const CODE_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
+
+/**
+ * Mã test của một lần chạy: `test_` + 10 ký tự a-z0-9 ngẫu nhiên.
+ * Mỗi phiên một mã mới nên tra lại trong Lịch sử là ra đúng lần chạy đó.
+ */
+function newTestCode(): string {
+  const bytes = new Uint32Array(10)
+  crypto.getRandomValues(bytes)
+  const body = Array.from(bytes, (n) => CODE_ALPHABET[n % CODE_ALPHABET.length]).join('')
+  return `test_${body}`
 }
 
 function formatSize(bytes: number): string {
@@ -72,8 +93,12 @@ export default function ScanPage() {
   const [provider, setProvider] = useState<string | null>(null)
   const [accepted, setAccepted] = useState<string[]>(FALLBACK_SUFFIXES)
   const [jobName, setJobName] = useState('')
-  const [testCode, setTestCode] = useState(() => testCodeStore.get() || defaultTestCode())
+  const [testCode, setTestCode] = useState(newTestCode)
   const [dossiers, setDossiers] = useState<Dossier[]>([])
+  // Hai cách nạp hồ sơ: lấy sẵn từ kho tài liệu, hoặc tự tải lên tại đây
+  const [mode, setMode] = useState<Mode>('kho')
+  const [pool, setPool] = useState<PoolItem[]>([])
+  const [poolLoading, setPoolLoading] = useState(false)
   const [phase, setPhase] = useState<Phase>('chuan-bi')
   const [job, setJob] = useState<BatchJob | null>(null)
   const [results, setResults] = useState<Record<string, BatchResult>>({})
@@ -106,10 +131,38 @@ export default function ScanPage() {
       .catch(() => setBatchReady(false))
   }, [key, navigate])
 
-  // Nhớ mã test để F5 hay mở lại trang không phải gõ lại
-  useEffect(() => {
-    testCodeStore.set(testCode)
-  }, [testCode])
+  // Kho tài liệu của đúng thủ tục này
+  const loadPool = useCallback(() => {
+    setPoolLoading(true)
+    api
+      .poolItems(key)
+      .then((r) => setPool(r.items))
+      .catch(() => setPool([]))
+      .finally(() => setPoolLoading(false))
+  }, [key])
+
+  useEffect(loadPool, [loadPool])
+
+  /** Chọn/bỏ một hồ sơ trong kho — nó thành một dòng trong danh sách sẽ chạy */
+  const togglePool = useCallback((item: PoolItem) => {
+    setDossiers((prev) => {
+      const existing = prev.find((d) => d.poolId === item.poolId)
+      if (existing) return prev.filter((d) => d.poolId !== item.poolId)
+      return [
+        ...prev,
+        {
+          uid: `pool-${item.poolId}`,
+          clientDossierId: item.clientDossierId,
+          files: [],
+          hasHandwriting: false,
+          status: 'moi',
+          poolId: item.poolId,
+          poolFiles: item.files.map((f) => f.name),
+          poolBytes: item.totalBytes,
+        },
+      ]
+    })
+  }, [])
 
   // -------------------------------------------------------------- hồ sơ
 
@@ -213,36 +266,14 @@ export default function ScanPage() {
     [addNamedFiles],
   )
 
-  // Kéo-thả NHIỀU thư mục cùng lúc: đọc đệ quy từng thư mục qua File System Entry API.
+  // Kéo-thả NHIỀU thư mục cùng lúc (logic đọc đệ quy dùng chung ở upload/dropFolders.ts)
   const onDrop = useCallback(
     async (e: React.DragEvent) => {
       e.preventDefault()
       setDragOver(false)
-      const items = Array.from(e.dataTransfer.items)
-        .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
-        .filter(Boolean) as FileSystemEntry[]
-      if (!items.length) return
-
-      const pairs: { file: File; path: string }[] = []
-      const walk = async (entry: FileSystemEntry, prefix: string): Promise<void> => {
-        if (entry.isFile) {
-          const file = await new Promise<File>((res, rej) =>
-            (entry as FileSystemFileEntry).file(res, rej),
-          )
-          pairs.push({ file, path: prefix + entry.name })
-        } else if (entry.isDirectory) {
-          const reader = (entry as FileSystemDirectoryEntry).createReader()
-          let batch: FileSystemEntry[]
-          do {
-            batch = await new Promise<FileSystemEntry[]>((res, rej) => reader.readEntries(res, rej))
-            for (const child of batch) await walk(child, `${prefix}${entry.name}/`)
-          } while (batch.length)
-        }
-      }
-
       try {
-        await Promise.all(items.map((entry) => walk(entry, '')))
-        addNamedFiles(pairs)
+        const pairs = await readDropped(e.dataTransfer)
+        if (pairs.length) addNamedFiles(pairs)
       } catch {
         setError('Không đọc được thư mục kéo vào. Thử lại hoặc dùng nút chọn thư mục.')
       }
@@ -298,12 +329,19 @@ export default function ScanPage() {
       dossiers.map((d) => async () => {
         patchDossier(d.uid, { status: 'dang-tai', error: null })
         try {
-          const item = await api.uploadDossier(
-            created.jobId,
-            d.clientDossierId.trim(),
-            d.files,
-            d.hasHandwriting,
-          )
+          const item = d.poolId
+            ? await api.addItemFromPool(
+                created.jobId,
+                d.poolId,
+                d.clientDossierId.trim(),
+                d.hasHandwriting,
+              )
+            : await api.uploadDossier(
+                created.jobId,
+                d.clientDossierId.trim(),
+                d.files,
+                d.hasHandwriting,
+              )
           uploaded.push(item.itemId)
           patchDossier(d.uid, { itemId: item.itemId, status: item.status })
         } catch (err) {
@@ -325,6 +363,7 @@ export default function ScanPage() {
     try {
       setJob(await api.startJob(created.jobId))
       setPhase('dang-quet')
+      loadPool()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không bắt đầu được phiên quét')
       setPhase('chuan-bi')
@@ -403,6 +442,7 @@ export default function ScanPage() {
   }
 
   function reset() {
+    setTestCode(newTestCode())
     setDossiers([])
     setResults({})
     setJob(null)
@@ -468,18 +508,18 @@ export default function ScanPage() {
               <input
                 type="text"
                 value={testCode}
-                onChange={(e) => setTestCode(normalizeTestCode(e.target.value))}
-                placeholder="TEST-20260823-1430"
+                onChange={(e) => setTestCode(e.target.value.trim())}
+                placeholder="test_a1b2c3d4e5"
               />
-              <button className="ghost-btn" onClick={() => setTestCode(defaultTestCode())}>
+              <button className="ghost-btn" onClick={() => setTestCode(newTestCode())}>
                 Mã mới
               </button>
             </div>
           </label>
           <p className="muted-small">
-            Mọi thao tác trong lần chạy này được gắn mã test ở trên; log backend gom theo mã đó và
-            hiện trong <Link to="/lich-su">Lịch sử</Link> — xem được đã điền những gì, chạy hết bao
-            lâu, lỗi ở hồ sơ nào. Mã chỉ nhận chữ, số và <code>-._</code>.
+            Mỗi lần chạy sinh một mã ngẫu nhiên <code>test_</code> + 10 ký tự. Gõ mã này vào ô tìm ở{' '}
+            <Link to="/lich-su">Lịch sử</Link> là ra đúng lần chạy đó — đã điền những gì, chạy hết
+            bao lâu, hồ sơ nào lỗi.
           </p>
         </section>
 
@@ -492,6 +532,80 @@ export default function ScanPage() {
           </div>
 
           {editable && (
+            <div className="mode-switch">
+              <span className="view-switch">
+                <button
+                  className={`chip${mode === 'kho' ? ' active' : ''}`}
+                  onClick={() => setMode('kho')}
+                >
+                  Lấy từ kho tài liệu
+                </button>
+                <button
+                  className={`chip${mode === 'tu-tai-len' ? ' active' : ''}`}
+                  onClick={() => setMode('tu-tai-len')}
+                >
+                  Tự tải lên
+                </button>
+              </span>
+              <span className="muted-small">
+                {mode === 'kho'
+                  ? 'Hồ sơ do tài khoản chuyên tải tài liệu chuẩn bị sẵn cho thủ tục này.'
+                  : 'Chọn file ngay trên máy bạn như trước.'}
+              </span>
+            </div>
+          )}
+
+          {editable && mode === 'kho' && (
+            <div className="pool-picker">
+              <div className="pool-picker-head">
+                <strong>Kho tài liệu — {procedure?.label ?? key}</strong>
+                <span className="muted-small">
+                  {poolLoading ? 'Đang tải…' : `${pool.length} hồ sơ sẵn sàng`}
+                </span>
+                <button className="ghost-btn" onClick={loadPool}>
+                  Tải lại kho
+                </button>
+                <Link to="/kho-tai-lieu" className="back-link">
+                  Mở kho tài liệu
+                </Link>
+              </div>
+
+              {!poolLoading && pool.length === 0 ? (
+                <div className="empty">
+                  Kho chưa có hồ sơ nào cho thủ tục này. Nhờ tài khoản chuyên tải tài liệu bỏ hồ sơ
+                  vào <Link to="/kho-tai-lieu">Kho tài liệu</Link>, hoặc chuyển sang “Tự tải lên”.
+                </div>
+              ) : (
+                <div className="pool-list">
+                  {pool.map((it) => {
+                    const picked = dossiers.some((d) => d.poolId === it.poolId)
+                    return (
+                      <button
+                        key={it.poolId}
+                        className={`pool-card${picked ? ' picked' : ''}`}
+                        onClick={() => togglePool(it)}
+                      >
+                        <span className="pool-check" aria-hidden="true" />
+                        <span className="pool-body">
+                          <strong>{it.clientDossierId}</strong>
+                          <span className="muted-small">
+                            {it.files.map((f) => f.name).join(', ')}
+                          </span>
+                          <span className="muted-small">
+                            {it.fileCount} file · {formatSize(it.totalBytes)} · {it.uploadedBy}
+                            {it.useCount > 0 ? ` · đã chạy ${it.useCount} lần` : ''}
+                          </span>
+                          {it.note && <span className="muted-small">Ghi chú: {it.note}</span>}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {editable && mode === 'tu-tai-len' && (
             <div className="upload-actions">
               <input
                 ref={fileInput}
@@ -540,8 +654,9 @@ export default function ScanPage() {
 
           {!dossiers.length ? (
             <div className="empty">
-              Chưa có hồ sơ nào. Một hồ sơ gồm nhiều file (tờ khai, CCCD…), hoặc chọn cả thư mục —
-              mỗi thư mục con thành một hồ sơ riêng.
+              {mode === 'kho'
+                ? 'Chưa chọn hồ sơ nào từ kho. Bấm vào một thẻ ở trên để đưa vào lô chạy.'
+                : 'Chưa có hồ sơ nào. Một hồ sơ gồm nhiều file (tờ khai, CCCD…), hoặc chọn cả thư mục — mỗi thư mục con thành một hồ sơ riêng.'}
               <div className="muted-small" style={{ marginTop: 6 }}>
                 Nhận {accepted.join(', ')} — ảnh lạ và tài liệu Word cũ được tự chuyển đổi trước khi
                 bóc tách.
@@ -561,7 +676,11 @@ export default function ScanPage() {
                 </thead>
                 <tbody>
                   {dossiers.map((d) => {
-                    const size = d.files.reduce((s, f) => s + f.size, 0)
+                    // Hồ sơ lấy từ kho: file nằm trên máy chủ nên chỉ có tên và dung lượng
+                    const names = d.poolId ? d.poolFiles ?? [] : d.files.map((f) => f.name)
+                    const size = d.poolId
+                      ? d.poolBytes ?? 0
+                      : d.files.reduce((s, f) => s + f.size, 0)
                     const result = results[d.clientDossierId.trim()]
                     const isOpen = expanded === d.uid
                     return (
@@ -578,9 +697,10 @@ export default function ScanPage() {
                             />
                           </td>
                           <td>
-                            <div className="file-names">{d.files.map((f) => f.name).join(', ')}</div>
+                            <div className="file-names">{names.join(', ')}</div>
                             <span className="muted-small">
-                              {d.files.length} file · {formatSize(size)}
+                              {names.length} file · {formatSize(size)}
+                              {d.poolId && ' · từ kho tài liệu'}
                             </span>
                           </td>
                           <td>

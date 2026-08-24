@@ -7,6 +7,9 @@ import type {
   BatchField,
   HistoryJobDetail,
   HistoryResult,
+  ItemOcr,
+  PoolListResponse,
+  PoolItem,
   WorklistResponse,
   LabelStats,
   LabelRecord,
@@ -18,7 +21,6 @@ import type {
 } from './types'
 
 const TOKEN_KEY = 'hcc.access_token'
-const TEST_CODE_KEY = 'hcc.test_code'
 
 export class ApiError extends Error {
   status: number
@@ -32,31 +34,6 @@ export const tokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
   clear: () => localStorage.removeItem(TOKEN_KEY),
-}
-
-/**
- * Mã test của lần chạy thử đang mở, gửi kèm khi tạo phiên quét và lưu vào lịch sử.
- * Giữ trong localStorage để F5 không mất mã.
- */
-export const testCodeStore = {
-  get: () => localStorage.getItem(TEST_CODE_KEY) ?? '',
-  set: (code: string) => {
-    const clean = normalizeTestCode(code)
-    if (clean) localStorage.setItem(TEST_CODE_KEY, clean)
-    else localStorage.removeItem(TEST_CODE_KEY)
-  },
-}
-
-/** Giữ mã test gọn và dễ tra: bỏ dấu, thay ký tự lạ bằng "-". */
-export function normalizeTestCode(code: string): string {
-  return code
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .replace(/[^A-Za-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64)
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -159,19 +136,20 @@ export const api = {
 
   itemResult: (itemId: string) => request<BatchResult>(`/batch/items/${itemId}/result`),
 
+  /** Văn bản OCR mà nguồn bóc tách đọc được từ file của hồ sơ */
+  itemOcr: (itemId: string) => request<ItemOcr>(`/batch/items/${itemId}/ocr`),
+
   retryItem: (itemId: string) => request<BatchItem>(`/batch/items/${itemId}/retry`, { method: 'POST' }),
 
   // ---- Lịch sử đã lưu trong MongoDB ----
 
-  historyJobs: (limit = 50, procedure?: string) => {
+  historyJobs: (limit = 50, procedure?: string, q?: string) => {
     const proc = procedure?.trim() ? `&procedure=${encodeURIComponent(procedure.trim())}` : ''
-    return request<HistoryListResponse>(`/history/jobs?limit=${limit}${proc}`)
+    const search = q?.trim() ? `&q=${encodeURIComponent(q.trim())}` : ''
+    return request<HistoryListResponse>(`/history/jobs?limit=${limit}${proc}${search}`)
   },
 
   historyJob: (jobId: string) => request<HistoryJobDetail>(`/history/jobs/${jobId}`),
-
-  deleteHistoryJob: (jobId: string) =>
-    request<{ deleted: boolean }>(`/history/jobs/${jobId}`, { method: 'DELETE' }),
 
   // ---- Thống kê nhãn + JSON bóc tách + nhãn kết quả đúng ----
 
@@ -184,6 +162,21 @@ export const api = {
 
   getLabel: (itemId: string) => request<LabelRecord>(`/history/items/${itemId}/label`),
 
+  /** Xóa một hồ sơ CHƯA gán nhãn khỏi worklist — chỉ quản trị */
+  deleteItemResult: (itemId: string) =>
+    request<{ deleted: boolean }>(`/history/items/${itemId}/result`, { method: 'DELETE' }),
+
+  /** Xóa toàn bộ hồ sơ chưa gán nhãn của một thủ tục — chỉ quản trị */
+  deleteUnlabeled: (procedure: string) =>
+    request<{ deleted: number }>(
+      `/history/labels/unlabeled?procedure=${encodeURIComponent(procedure)}`,
+      { method: 'DELETE' },
+    ),
+
+  /** Bỏ nhãn của một hồ sơ — chỉ tài khoản quản trị gọi được */
+  deleteLabel: (itemId: string) =>
+    request<{ deleted: boolean }>(`/history/items/${itemId}/label`, { method: 'DELETE' }),
+
   saveLabel: (
     itemId: string,
     body: {
@@ -191,12 +184,45 @@ export const api = {
       jobId?: string | null
       procedure?: string | null
       clientDossierId?: string | null
-      status?: 'draft' | 'done'
+      status?: 'draft' | 'error' | 'done'
+      note?: string | null
+      issues?: string[]
     },
   ) =>
     request<{ saved: boolean }>(`/history/items/${itemId}/label`, {
       method: 'PUT',
       body: JSON.stringify(body),
+    }),
+
+  // ---- Kho tài liệu ----
+
+  poolItems: (procedure?: string) => {
+    const qs = procedure ? `?procedure=${encodeURIComponent(procedure)}` : ''
+    return request<PoolListResponse>(`/pool/items${qs}`)
+  },
+
+  poolStatus: () =>
+    request<{ enabled: boolean; acceptedSuffixes: string[] }>('/pool/status'),
+
+  addToPool: (procedure: string, clientDossierId: string, files: File[], note?: string) => {
+    const form = new FormData()
+    form.append('procedure', procedure)
+    form.append('clientDossierId', clientDossierId)
+    if (note?.trim()) form.append('note', note.trim())
+    files.forEach((f) => form.append('files', f, f.name))
+    return request<PoolItem>('/pool/items', { method: 'POST', body: form })
+  },
+
+  deletePoolItem: (poolId: string) =>
+    request<{ deleted: boolean }>(`/pool/items/${encodeURIComponent(poolId)}`, {
+      method: 'DELETE',
+    }),
+
+  /** Nạp một hồ sơ có sẵn trong kho vào phiên quét (file đã nằm trên máy chủ) */
+  addItemFromPool: (jobId: string, poolId: string, clientDossierId: string, hasHandwriting: boolean) =>
+    request<BatchItem & { poolId: string }>(`/batch/jobs/${jobId}/items/from-pool`, {
+      method: 'POST',
+      body: JSON.stringify({ poolId, clientDossierId, hasHandwriting }),
     }),
 
   // ---- Quản lý tài khoản (chỉ admin gọi được) ----

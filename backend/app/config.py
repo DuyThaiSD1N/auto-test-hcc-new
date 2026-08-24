@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # So ho so xu ly dong thoi khi goi BE noi bo (moi ho so la mot lan goi OCR + LLM)
     internal_concurrency: int = 2
 
+    # ---- Tai khoan QUAN TRI cua BE noi bo (tuy chon) ----
+    # Van ban OCR cua tung ho so nam trong API /api/v1/traces cua BE, ma API do chi cho
+    # tai khoan admin. De trong = khong doc duoc OCR, moi thu khac van chay binh thuong.
+    internal_admin_username: str = ""
+    internal_admin_password: str = ""
+
     # ---- API boc tach ho so theo lo (Auto Fill HCC) ----
     batch_api_base_url: str = "https://trolyhoso-hcc-admin.vnekyc.vn"
     batch_api_secret: str = ""
@@ -88,6 +94,10 @@ class Settings(BaseSettings):
     @property
     def use_internal_backend(self) -> bool:
         return self.extract_provider.strip().lower() == "internal"
+
+    @property
+    def internal_admin_configured(self) -> bool:
+        return bool(self.internal_admin_username.strip() and self.internal_admin_password.strip())
 
     @property
     def internal_configured(self) -> bool:

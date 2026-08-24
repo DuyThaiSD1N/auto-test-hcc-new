@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { BatchField, Procedure } from '../api/types'
+import type { BatchField, ItemOcr, Procedure } from '../api/types'
+import { ISSUE_LABEL } from '../api/types'
 import { eformUrl } from '../eform/registry'
 import AppLayout from '../components/AppLayout'
 import { fillEform } from '../eform/runFill'
@@ -26,6 +27,81 @@ function orderedKeys(obj: Record<string, unknown>): string[] {
   const known = AREA_KEYS.filter((k) => k in obj)
   const rest = Object.keys(obj).filter((k) => !AREA_KEYS.includes(k))
   return [...known, ...rest]
+}
+
+interface OcrView {
+  /** Văn bản OCR theo từng trang, nếu nguồn bóc tách trả về */
+  pages: { label: string; text: string }[]
+  /** Văn bản OCR gộp một khối */
+  text: string | null
+  /** Dữ liệu thô của bước quét trước khi ánh xạ sang trường biểu mẫu */
+  extracted: Record<string, unknown> | null
+  documents: string[]
+  stats: Record<string, unknown> | null
+  session: string | null
+}
+
+function firstString(values: unknown[]): string | null {
+  const found = values.find((v) => typeof v === 'string' && v.trim())
+  return typeof found === 'string' ? found : null
+}
+
+/**
+ * Rút phần "bản quét đọc ra được gì" từ kết quả bóc tách.
+ *
+ * Mỗi pipeline trả một kiểu: có nơi để văn bản OCR ở `pages[]`, có nơi gộp vào
+ * `ocrText`/`extracted.text`, pipeline `trich_luc` hiện chỉ trả `extracted` (dữ liệu
+ * thô) và `stats` (thời gian OCR/LLM). Đọc rộng tay để nguồn nào cũng hiện được,
+ * và không có gì thì nói thẳng là không có chứ không hiện khung trống.
+ */
+function readOcr(raw: unknown): OcrView {
+  const r = isObject(raw) ? raw : {}
+  const extracted = isObject(r.extracted) ? r.extracted : null
+
+  const pages: { label: string; text: string }[] = []
+  if (Array.isArray(r.pages)) {
+    r.pages.forEach((p, i) => {
+      if (typeof p === 'string' && p.trim()) {
+        pages.push({ label: `Trang ${i + 1}`, text: p })
+      } else if (isObject(p)) {
+        const text = firstString([p.text, p.content, p.ocr, p.rawText, p.raw_text])
+        if (text) {
+          const label = firstString([p.name, p.file, p.fileName, p.page]) ?? `Trang ${i + 1}`
+          pages.push({ label, text })
+        }
+      }
+    })
+  }
+
+  const documents = Array.isArray(extracted?.documents)
+    ? (extracted!.documents as unknown[]).map((d) =>
+        typeof d === 'string' ? d : String(isObject(d) ? d.name ?? JSON.stringify(d) : d),
+      )
+    : []
+
+  return {
+    pages,
+    text: firstString([
+      r.ocrText,
+      r.ocr,
+      r.text,
+      extracted?.text,
+      extracted?.ocr,
+      extracted?.ocrText,
+      extracted?.rawText,
+      extracted?.raw_text,
+    ]),
+    extracted,
+    documents,
+    stats: isObject(r.stats) ? r.stats : null,
+    session: firstString([r.sessionId, r.requestId]),
+  }
+}
+
+/** "12 ms" / "5,0 giây" - stats của pipeline tính bằng mili giây */
+function ms(value: unknown): string | null {
+  if (typeof value !== 'number' || Number.isNaN(value)) return null
+  return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(1).replace('.', ',')} giây`
 }
 
 export default function EformPage() {
@@ -53,11 +129,26 @@ export default function EformPage() {
   const [filling, setFilling] = useState(false)
   const [frameReady, setFrameReady] = useState(false)
   const [frameEpoch, setFrameEpoch] = useState(0)
-  const [status, setStatus] = useState<'pending' | 'draft' | 'done'>('pending')
+  const [status, setStatus] = useState<'pending' | 'draft' | 'error' | 'done'>('pending')
+  // Nhận xét + loại lỗi của hồ sơ (chỉ có nghĩa khi lưu ở trạng thái "lỗi")
+  const [note, setNote] = useState('')
+  const [issues, setIssues] = useState<string[]>([])
   // Tab JSON: mặc định chia đôi màn hình như tab Form, bấm mở rộng thì chiếm hết bề ngang
   const [jsonFull, setJsonFull] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [copiedOcr, setCopiedOcr] = useState(false)
+  // Khối nào đang chiếm hết chiều cao: cả hai / chỉ OCR / chỉ JSON
+  const [stack, setStack] = useState<'ca-hai' | 'ocr' | 'json'>('ca-hai')
   const [autoSaveMsg, setAutoSaveMsg] = useState<string | null>(null)
+
+  // Phần OCR của tab JSON, đọc lại mỗi khi có kết quả mới
+  const ocr = useMemo(() => readOcr(rawResult), [rawResult])
+  // Kết quả bóc tách không kèm văn bản OCR -> hỏi thêm backend (nó đọc trace của nguồn bóc tách)
+  const [ocrRemote, setOcrRemote] = useState<ItemOcr | 'dang-tai' | null>(null)
+  const hasOcrText =
+    ocr.pages.length > 0 ||
+    Boolean(ocr.text) ||
+    (typeof ocrRemote === 'object' && Boolean(ocrRemote?.available))
 
   const frameRef = useRef<HTMLIFrameElement>(null)
   const lastFilled = useRef<string>('')
@@ -98,6 +189,8 @@ export default function EformPage() {
         if (cancelled) return
         setFields(saved.fields)
         setStatus(saved.status ?? 'draft')
+        setNote(saved.note ?? '')
+        setIssues(saved.issues ?? [])
         setLabeled(true)
         setLabeledInfo(
           `Đã gán nhãn bởi ${saved.labeledBy ?? '?'} lúc ${new Date(saved.labeledAt).toLocaleString('vi-VN')}`,
@@ -126,12 +219,14 @@ export default function EformPage() {
     if (!dirty || !itemId || fields.length === 0) return
     const t = setTimeout(async () => {
       try {
-        const keep = status === 'done' ? 'done' : 'draft'
+        const keep = status === 'pending' ? 'draft' : status
         await api.saveLabel(itemId, {
           fields: fieldsRef.current,
           procedure: key,
           clientDossierId: null,
           status: keep,
+          note,
+          issues,
         })
         setLabeled(true)
         setStatus(keep)
@@ -142,7 +237,26 @@ export default function EformPage() {
       }
     }, 1200)
     return () => clearTimeout(t)
-  }, [dirty, fields, itemId, key, status])
+  }, [dirty, fields, itemId, key, status, note, issues])
+
+  useEffect(() => {
+    setOcrRemote(null)
+  }, [itemId])
+
+  useEffect(() => {
+    if (view !== 'json' || !itemId || ocrRemote) return
+    if (ocr.pages.length > 0 || ocr.text) return // kết quả đã kèm sẵn văn bản OCR
+    setOcrRemote('dang-tai')
+    api
+      .itemOcr(itemId)
+      .then(setOcrRemote)
+      .catch((err) =>
+        setOcrRemote({
+          available: false,
+          reason: err instanceof Error ? err.message : 'Không đọc được văn bản OCR.',
+        }),
+      )
+  }, [view, itemId, ocr, ocrRemote])
 
   // Tự điền eForm khi mở (sau khi có dữ liệu) — "form đã điền những gì"
   useEffect(() => {
@@ -183,7 +297,9 @@ export default function EformPage() {
           fields,
           procedure: key,
           clientDossierId: null,
-          status: status === 'done' ? 'done' : 'draft',
+          status: status === 'pending' ? 'draft' : status,
+          note,
+          issues,
         })
       }
     } catch {
@@ -193,18 +309,38 @@ export default function EformPage() {
     }
   }
 
-  async function save(status: 'draft' | 'done' = 'draft') {
+  async function save(next: 'draft' | 'error' | 'done' = 'draft') {
     if (!itemId) return
+    if (next === 'error' && issues.length === 0) {
+      setError('Chọn ít nhất một loại lỗi trước khi lưu lỗi.')
+      return
+    }
     setSaving(true)
     setSaveMsg(null)
     setError(null)
     try {
-      await api.saveLabel(itemId, { fields, procedure: key, clientDossierId: null, status })
+      // Hồ sơ hoàn thiện thì bỏ hết tag lỗi — đã sửa xong nên tag không còn đúng nữa
+      const keptIssues = next === 'done' ? [] : issues
+      await api.saveLabel(itemId, {
+        fields,
+        procedure: key,
+        clientDossierId: null,
+        status: next,
+        note,
+        issues: keptIssues,
+      })
+      setIssues(keptIssues)
       setLabeled(true)
-      setStatus(status)
+      setStatus(next)
       setDirty(false)
       setAutoSaveMsg(null)
-      setSaveMsg(status === 'done' ? 'Đã lưu và đánh dấu hoàn thiện.' : 'Đã lưu nháp.')
+      setSaveMsg(
+        next === 'done'
+          ? 'Đã lưu và đánh dấu hoàn thiện.'
+          : next === 'error'
+            ? 'Đã lưu là hồ sơ lỗi.'
+            : 'Đã lưu nháp.',
+      )
       setLabeledInfo(
         `Đã gán nhãn bởi ${user?.username ?? ''} lúc ${new Date().toLocaleString('vi-VN')}`,
       )
@@ -212,6 +348,42 @@ export default function EformPage() {
       setError(err instanceof Error ? err.message : 'Không lưu được nhãn')
     } finally {
       setSaving(false)
+    }
+  }
+
+  /** Bỏ nhãn (chỉ admin): quay về đúng dữ liệu bóc tách gốc để gán lại từ đầu. */
+  async function removeLabel() {
+    if (!itemId) return
+    setError(null)
+    try {
+      await api.deleteLabel(itemId)
+      const base = isObject(rawResult) ? ((rawResult.fields as BatchField[]) ?? []) : []
+      setFields(base)
+      setLabeled(false)
+      setLabeledInfo(null)
+      setStatus('pending')
+      setNote('')
+      setIssues([])
+      setDirty(false)
+      setAutoSaveMsg(null)
+      setSaveMsg('Đã bỏ nhãn, hồ sơ quay về dữ liệu bóc tách gốc.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không xóa được nhãn')
+    }
+  }
+
+  async function copyOcr() {
+    const text =
+      ocr.pages.map((p) => ['───── ' + p.label + ' ─────', p.text].join('\n')).join('\n\n') ||
+      ocr.text ||
+      (typeof ocrRemote === 'object' ? ocrRemote?.ocrText : '') ||
+      ''
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedOcr(true)
+      setTimeout(() => setCopiedOcr(false), 1500)
+    } catch {
+      setError('Trình duyệt không cho chép vào clipboard. Bôi đen rồi Ctrl+C.')
     }
   }
 
@@ -330,8 +502,92 @@ export default function EformPage() {
                     {fields.length} trường · cuộn trong khung để xem hết
                   </span>
                 </div>
-                <div className="json-view">
-                  <pre>{JSON.stringify(rawResult, null, 2)}</pre>
+                <div className={`json-stack${stack === 'ca-hai' ? '' : ` chi-${stack}`}`}>
+                  {/* Trên: bản quét đọc ra gì. Dưới: JSON đã bóc tách thành trường. */}
+                  <section className="json-box ocr">
+                    <header className="json-box-head">
+                      <strong>OCR — bản quét đọc ra gì</strong>
+                      <span className="json-box-tools">
+                        <button
+                          className="ghost-btn"
+                          onClick={() => setStack(stack === 'ocr' ? 'ca-hai' : 'ocr')}
+                        >
+                          {stack === 'ocr' ? 'Thu lại' : 'Phóng to'}
+                        </button>
+                        {hasOcrText && (
+                          <button className="ghost-btn" onClick={copyOcr}>
+                            {copiedOcr ? 'Đã chép ✓' : 'Chép OCR'}
+                          </button>
+                        )}
+                      </span>
+                      <span className="json-box-note">
+                        {ocr.documents.length > 0 && `${ocr.documents.join(' · ')} — `}
+                        {ms(ocr.stats?.ocr_latency_ms)
+                          ? `OCR ${ms(ocr.stats?.ocr_latency_ms)}`
+                          : 'chưa có số liệu OCR'}
+                        {ms(ocr.stats?.llm_latency_ms) && ` · LLM ${ms(ocr.stats?.llm_latency_ms)}`}
+                        {typeof ocrRemote === 'object' &&
+                          ocrRemote?.available &&
+                          ` · ${ocrRemote.chars?.toLocaleString('vi-VN')} ký tự${
+                            ocrRemote.provider ? ` · ${ocrRemote.provider}` : ''
+                          }`}
+                        {ocr.session && ` · ${ocr.session}`}
+                      </span>
+                    </header>
+                    <div className="json-view">
+                      {ocr.pages.length > 0 ? (
+                        <pre>
+                          {ocr.pages
+                            .map((p) => `───── ${p.label} ─────\n${p.text}`)
+                            .join('\n\n')}
+                        </pre>
+                      ) : ocr.text ? (
+                        <pre>{ocr.text}</pre>
+                      ) : ocrRemote === 'dang-tai' ? (
+                        <pre>{'Đang lấy văn bản OCR từ nguồn bóc tách…'}</pre>
+                      ) : typeof ocrRemote === 'object' && ocrRemote?.available ? (
+                        <pre>{ocrRemote.ocrText}</pre>
+                      ) : (
+                        <div className="ocr-empty">
+                          <strong>Chưa lấy được văn bản OCR của tài liệu</strong>
+                          {typeof ocrRemote === 'object' && ocrRemote?.reason && (
+                            <p>{ocrRemote.reason}</p>
+                          )}
+                          <button className="ghost-btn" onClick={() => setOcrRemote(null)}>
+                            Thử lại
+                          </button>
+                          {ocr.extracted && Object.keys(ocr.extracted).length > 0 && (
+                            <>
+                              <p className="ocr-empty-note">
+                                Bên dưới chỉ là dữ liệu thô của bước quét (
+                                <code>result.extracted</code>) — <strong>không phải</strong> nội
+                                dung OCR đọc từ tài liệu.
+                              </p>
+                              <pre>{JSON.stringify(ocr.extracted, null, 2)}</pre>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="json-box">
+                    <header className="json-box-head">
+                      <strong>JSON bóc tách</strong>
+                      <span className="json-box-tools">
+                        <button
+                          className="ghost-btn"
+                          onClick={() => setStack(stack === 'json' ? 'ca-hai' : 'json')}
+                        >
+                          {stack === 'json' ? 'Thu lại' : 'Phóng to'}
+                        </button>
+                      </span>
+                      <span className="json-box-note">{fields.length} trường</span>
+                    </header>
+                    <div className="json-view">
+                      <pre>{JSON.stringify(rawResult, null, 2)}</pre>
+                    </div>
+                  </section>
                 </div>
               </>
             )}
@@ -376,8 +632,44 @@ export default function EformPage() {
             </div>
 
             <div className="label-actions">
-              {/* Hồ sơ đã hoàn thiện và không có sửa đổi mới: chỉ báo trạng thái đã lưu,
-                  không mời bấm lưu lần nữa. Chạm vào bất kỳ trường nào là nút hiện lại. */}
+              {/* Nhận xét + loại lỗi: dùng khi hồ sơ có vấn đề. Hồ sơ đã hoàn thiện
+                  thì tag lỗi bị bỏ, chỉ giữ lại nhận xét để biết trước đó vướng gì. */}
+              <details className="issue-box" open={status === 'error' || issues.length > 0}>
+                <summary>
+                  Nhận xét &amp; loại lỗi
+                  {issues.length > 0 && status !== 'done' && (
+                    <span className="issue-count">{issues.length}</span>
+                  )}
+                </summary>
+
+                <div className="issue-tags">
+                  {Object.entries(ISSUE_LABEL).map(([kind, label]) => (
+                    <button
+                      key={kind}
+                      className={`issue-tag${issues.includes(kind) ? ' on' : ''}`}
+                      onClick={() => {
+                        setIssues((prev) =>
+                          prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind],
+                        )
+                        setDirty(true)
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  className="issue-note"
+                  placeholder="Nhận xét: sai ở trường nào, vì sao…"
+                  value={note}
+                  onChange={(e) => {
+                    setNote(e.target.value)
+                    setDirty(true)
+                  }}
+                />
+              </details>
+
               {status === 'done' && !dirty ? (
                 <div className="saved-state">
                   <span className="badge-labeled">✓ Đã lưu &amp; hoàn thiện</span>
@@ -385,6 +677,11 @@ export default function EformPage() {
                     {saveMsg ?? autoSaveMsg ?? labeledInfo ?? 'Nhãn đã lưu trong hệ thống.'}
                   </span>
                   <span className="muted-small">Sửa bất kỳ trường nào để lưu lại.</span>
+                  {user?.role === 'admin' && (
+                    <button className="ghost-btn danger" onClick={removeLabel}>
+                      Xóa nhãn
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>
@@ -397,6 +694,14 @@ export default function EformPage() {
                       Lưu nháp
                     </button>
                     <button
+                      className="ghost-btn danger"
+                      onClick={() => save('error')}
+                      disabled={saving || !fields.length}
+                      title="Đánh dấu hồ sơ này sai, kèm loại lỗi đã chọn ở trên"
+                    >
+                      Lưu lỗi
+                    </button>
+                    <button
                       className="primary-btn inline"
                       onClick={() => save('done')}
                       disabled={saving || !fields.length}
@@ -404,10 +709,36 @@ export default function EformPage() {
                       {saving ? 'Đang lưu…' : 'Lưu & hoàn thiện'}
                     </button>
                   </div>
+
+                  {status === 'error' && !dirty && (
+                    <div className="saved-state">
+                      <span className="badge-issue">
+                        ⚠ Đã lưu là lỗi
+                        {issues.length > 0 &&
+                          ` — ${issues.map((k) => ISSUE_LABEL[k] ?? k).join(', ')}`}
+                      </span>
+                      <span className="muted-small">
+                        Sửa lại rồi bấm “Lưu &amp; hoàn thiện” — lúc đó tag lỗi sẽ được gỡ.
+                      </span>
+                      {user?.role === 'admin' && labeled && (
+                        <button className="ghost-btn danger" onClick={removeLabel}>
+                          Xóa nhãn
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {status === 'draft' && !dirty && (
-                    <span className="muted-small ok-text">
-                      ● Đã lưu nháp — bấm “Lưu &amp; hoàn thiện” khi xong
-                    </span>
+                    <div className="saved-state">
+                      <span className="muted-small ok-text">
+                        ● Đã lưu nháp — bấm “Lưu &amp; hoàn thiện” khi xong
+                      </span>
+                      {user?.role === 'admin' && labeled && (
+                        <button className="ghost-btn danger" onClick={removeLabel}>
+                          Xóa nhãn
+                        </button>
+                      )}
+                    </div>
                   )}
                   {dirty ? (
                     <span className="muted-small">Đang chờ tự lưu…</span>

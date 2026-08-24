@@ -19,6 +19,8 @@ backend/                FastAPI
   app/routers/users.py       quản lý tài khoản (chỉ admin)
   app/extraction.py          chọn nguồn bóc tách theo cấu hình
   app/local_jobs.py          hàng đợi hồ sơ khi dùng BE nội bộ
+  app/pool.py                kho tài liệu (GridFS) do tài khoản uploader nạp
+  app/routers/pool.py        /api/pool/* - thêm/xem/xóa hồ sơ trong kho
   app/internal_client.py     gọi BE nội bộ (/api/v1/process)
   app/batch_client.py        gọi API bóc tách theo lô
   app/files.py               chuyển đổi file lạ trước khi bóc tách
@@ -29,6 +31,7 @@ frontend/               Vite + React + TypeScript
   src/pages/ProceduresPage.tsx  UI danh sách + chọn thủ tục
   src/pages/HistoryPage.tsx     UI lịch sử: đã điền gì, chạy ra sao
   src/pages/UsersPage.tsx       UI quản lý tài khoản (chỉ admin)
+  src/pages/PoolPage.tsx        UI kho tài liệu (tài khoản chuyên tải)
   src/components/AppLayout.tsx  khung chung: thanh bên + thanh tiêu đề
   src/auth/AuthContext.tsx      lưu phiên, tự khôi phục từ localStorage
   src/api/client.ts             gọi API qua proxy /api
@@ -64,8 +67,9 @@ tại `/tai-khoan` (thanh bên chỉ hiện mục này với tài khoản admin)
 
 | Quyền | Làm được gì |
 |-------|-------------|
-| `admin` — Quản trị | mọi thứ của người dùng, **cộng** tạo/sửa/xóa tài khoản và **xóa phiên trong lịch sử** |
+| `admin` — Quản trị | mọi thứ, **cộng** tạo/sửa/xóa tài khoản, **xóa nhãn** và **xóa hồ sơ chưa gán nhãn** |
 | `tester` — Người dùng | chạy phiên quét, bóc tách, gán nhãn, xem lịch sử và dữ liệu đã điền |
+| `uploader` — Tải tài liệu | **chỉ** vào Kho tài liệu: tải hồ sơ lên và phân loại theo thủ tục; không vào được trang quét/lịch sử |
 
 Chặn ở **cả hai lớp**: giao diện ẩn nút, backend chặn bằng dependency `require_admin`
 ([`app/deps.py`](backend/app/deps.py)) nên gọi thẳng API cũng nhận 403.
@@ -224,7 +228,15 @@ tiếng Việt (`INVALID_BATCH_SECRET`, `BATCH_QUEUE_FULL`, `FILE_TOO_LARGE`…)
 Mỗi thủ tục có **worklist gán nhãn riêng** tại `/thu-tuc/{key}/nhan`:
 
 - **Thanh tiến trình**: số hồ sơ đã hoàn thiện / tổng, kèm bộ lọc theo trạng thái.
-- **Ba trạng thái** mỗi hồ sơ: `Chưa gán` (mới bóc tách) → `Đang sửa` (nháp) → `Hoàn thiện`.
+- **Bốn trạng thái** mỗi hồ sơ: `Chưa gán` (mới bóc tách) → `Đang sửa` (nháp) / `Lỗi` → `Hoàn thiện`.
+- **Nhận xét & loại lỗi**: mỗi hồ sơ ghi được nhận xét tự do và gắn một hay nhiều loại lỗi —
+  *Điền sai · Điền thiếu · OCR sai thông tin · Điền sai chủ thể · Không ưu tiên*.
+  Nút **Lưu lỗi** đánh dấu hồ sơ sai (bắt buộc chọn ít nhất một loại lỗi, nếu không backend trả 400).
+  Hồ sơ lỗi **vẫn sửa tiếp được**; khi bấm *Lưu & hoàn thiện* thì **tag lỗi tự gỡ hết** — đã sửa xong
+  nên tag không còn đúng nữa — riêng nhận xét thì giữ lại để biết trước đó vướng gì.
+- **Dọn hồ sơ chưa gán** (chỉ admin): xóa từng hồ sơ `Chưa gán` bằng nút *Xóa hồ sơ*, hoặc xóa cả
+  loạt bằng nút *Xóa N hồ sơ chưa gán* ở thanh tiêu đề. Hồ sơ **đã có nhãn thì bị từ chối** (409) —
+  phải bỏ nhãn trước, tránh xóa nhầm công đã làm.
 - **Sửa tại chỗ**: bấm *Sửa* mở ngay trình sửa trường dưới dòng đó, không phải mở từng hồ sơ.
   *Lưu nháp* giữ trạng thái đang sửa; *Lưu & hoàn thiện* đánh dấu xong.
 - Bấm *Form + JSON* để mở màn hình xem form đã điền + JSON bóc tách (cũng sửa/lưu được ở đó).
@@ -241,7 +253,8 @@ hệ thống**: một hồ sơ được đếm khi **kết quả bóc tách củ
   theo đó — nếu không, nhãn ở lại và thủ tục cứ hiện "0/1" trong khi không còn hồ sơ nào để mở.
 - Nhãn mồ côi (hồ sơ đã bị xóa) **không hiện trong worklist và không được đếm**.
 
-Nhãn lưu ở collection `labels` (khóa `itemId`), có thêm `status` (`draft`/`done`), người gán, thời điểm.
+Nhãn lưu ở collection `labels` (khóa `itemId`): `status` (`draft`/`error`/`done`), `issues[]`
+(loại lỗi), `note` (nhận xét), người gán, thời điểm.
 Trình sửa trường dùng chung [`components/FieldsEditor.tsx`](frontend/src/components/FieldsEditor.tsx)
 cho cả worklist lẫn màn hình xem chi tiết.
 
@@ -249,11 +262,41 @@ cho cả worklist lẫn màn hình xem chi tiết.
 
 | Method | Đường dẫn | Mô tả |
 |--------|-----------|-------|
-| GET | `/api/history/stats` | mỗi thủ tục: số kết quả, số nhãn, số hoàn thiện |
-| GET | `/api/history/labels?procedure=` | worklist: mọi hồ sơ + trạng thái nhãn + counts |
+| GET | `/api/history/jobs?q=` | tìm phiên theo mã test / tên phiên / jobId |
+| GET | `/api/history/stats` | mỗi thủ tục: số kết quả, số nhãn, số hoàn thiện, số lỗi |
+| GET | `/api/history/labels?procedure=` | worklist: mọi hồ sơ + trạng thái nhãn + counts (kèm `error`) |
+| DELETE | `/api/history/items/{itemId}/result` | **admin** — xóa một hồ sơ **chưa gán nhãn** |
+| DELETE | `/api/history/labels/unlabeled?procedure=` | **admin** — xóa mọi hồ sơ chưa gán nhãn của thủ tục |
+| GET | `/api/history/issue-kinds` | danh sách loại lỗi |
 | GET | `/api/history/items/{itemId}/result` | JSON bóc tách đã lưu |
 | GET | `/api/history/items/{itemId}/label` | nhãn đã lưu |
-| PUT | `/api/history/items/{itemId}/label` | lưu nhãn kèm `status` (`draft`/`done`) |
+| PUT | `/api/history/items/{itemId}/label` | lưu nhãn kèm `status` (`draft`/`error`/`done`), `issues[]`, `note` |
+| DELETE | `/api/history/items/{itemId}/label` | **admin** — bỏ nhãn, hồ sơ về "Chưa gán" |
+| GET | `/api/batch/items/{itemId}/ocr` | văn bản OCR của hồ sơ (cần tài khoản admin BE) |
+
+## Kho tài liệu (tách người chuẩn bị hồ sơ khỏi người chạy thử)
+
+Luồng hai vai:
+
+1. **Tài khoản `uploader`** đăng nhập là vào thẳng `/kho-tai-lieu` (thanh bên chỉ có mục này).
+   Họ chọn thủ tục, kéo file hoặc cả thư mục vào, đặt mã hồ sơ + ghi chú, bấm *Đưa vào kho*.
+   File được chuyển đổi ngay lúc này (WEBP→JPEG, DOC→PDF) rồi cất vào **GridFS**
+   (bucket `pool_files`), mô tả nằm ở collection `pool_items`.
+2. **Tài khoản `tester`/`admin`** vào một thủ tục, bước "2. Hồ sơ cần bóc tách" có **hai chế độ**:
+   - **Lấy từ kho tài liệu** — hiện đúng những hồ sơ kho có cho thủ tục đó, bấm chọn là thành một
+     dòng trong lô chạy. File đã nằm sẵn trên máy chủ nên trình duyệt **không phải tải lại**.
+   - **Tự tải lên** — chọn file tại chỗ như trước, không đổi gì.
+
+Một hồ sơ trong kho **dùng lại được nhiều lần** (đây là hệ thống thử nghiệm, chạy lại là bình
+thường) — chỉ đếm số lần đã dùng và ghi phiên gần nhất. Xóa hồ sơ khỏi kho thì xóa luôn file
+trong GridFS; người tải chỉ xóa được hồ sơ của chính mình, admin xóa được tất cả.
+
+| Method | Đường dẫn | Mô tả |
+|--------|-----------|-------|
+| GET | `/api/pool/items?procedure=` | hồ sơ trong kho (ai đăng nhập cũng xem được) |
+| POST | `/api/pool/items` | **uploader/admin** — thêm hồ sơ vào kho |
+| DELETE | `/api/pool/items/{poolId}` | **uploader/admin** — xóa hồ sơ khỏi kho |
+| POST | `/api/batch/jobs/{jobId}/items/from-pool` | nạp một hồ sơ từ kho vào phiên quét |
 
 ## Dữ liệu tỉnh/thành & phường/xã
 
@@ -277,6 +320,9 @@ Mọi phiên quét và **JSON bóc tách** được lưu lại để tra cứu, 
 
 ### Trang lịch sử xem được gì
 
+Lịch sử là dữ liệu **chỉ đọc** — không có nút xóa phiên. Muốn dọn thì xóa hồ sơ chưa gán nhãn ở
+worklist gán nhãn của thủ tục.
+
 Bấm *Xem chi tiết* một phiên là thấy đủ **đã điền những gì** và **chạy ra sao**:
 
 - **Tiến trình phiên**: trạng thái, mã test, nguồn bóc tách, mốc *tạo → bắt đầu → kết thúc* kèm
@@ -287,8 +333,9 @@ Bấm *Xem chi tiết* một phiên là thấy đủ **đã điền những gì*
   sửa tay** nếu hồ sơ đã gán nhãn (đúng thứ tự eForm nạp dữ liệu), ghi rõ nguồn và ai sửa lúc nào.
   Nút *Mở form + JSON* mở màn hình eForm đã điền đầy đủ.
 
-**Mã test** đặt ở bước "1. Phiên quét" (mặc định `TEST-<ngày>-<giờphút>`) chỉ để đánh dấu lần chạy
-thử, lưu vào `jobs.testCode` và hiện thành một cột ở lịch sử.
+**Mã test**: mỗi lần chạy sinh **một mã ngẫu nhiên** dạng `test_` + 10 ký tự `a-z0-9`
+(vd `test_yiyfcl1df5`), lưu vào `jobs.testCode`. Ô **tìm** ở đầu trang lịch sử tra theo
+mã test, tên phiên hoặc `jobId` — gõ một phần mã cũng ra, không phân biệt hoa thường.
 
 > Toàn bộ tiến trình đọc từ CSDL nên **khởi động lại backend vẫn xem lại được**.
 
@@ -300,6 +347,7 @@ thử, lưu vào `jobs.testCode` và hiện thành một cột ở lịch sử.
 | `jobs` | phiên quét: tên, thủ tục, nguồn bóc tách, trạng thái, số lượng | `jobId` (unique) |
 | `items` | từng hồ sơ: mã hồ sơ, mô tả file, trạng thái, lỗi | `itemId` (unique) |
 | `results` | **JSON bóc tách của từng hồ sơ** | `itemId` (unique) |
+| `pool_items` + `pool_files.*` | kho tài liệu: mô tả hồ sơ + nội dung file (GridFS) | `poolId` |
 
 `results` chỉ lưu mô tả file (tên, kiểu, dung lượng), **không lưu nội dung file** — tránh phình CSDL.
 Giá trị `x-select-area` là object lồng nhau vẫn lưu nguyên vẹn.
@@ -397,6 +445,46 @@ Lưu ý về kiểu dữ liệu: field `x-select-area` có `value` là **object*
 không phải chuỗi. Mọi chỗ hiển thị phải đi qua
 [`displayFieldValue`](frontend/src/api/fieldValue.ts) — render thẳng object ra JSX sẽ làm React ném lỗi
 và trắng cả trang.
+
+### Màn hình gán nhãn có gì
+
+Hai tab, chia đôi màn hình với cột sửa trường bên phải:
+
+- **Form đã điền** — eForm thật, tự điền theo dữ liệu hiện tại.
+- **JSON bóc tách** — xếp hai khung chồng nhau: trên là **OCR — bản quét đọc ra gì**
+  (văn bản OCR từng trang nếu nguồn bóc tách trả về, kèm tên file, thời gian OCR/LLM và
+  mã phiên), dưới là **JSON bóc tách** đầy đủ. Nút *Mở rộng toàn màn hình* giấu cột sửa
+  trường để đọc cho dễ, *Chép JSON* copy nguyên khối. Mở thẳng tab này bằng `?view=json`.
+
+#### Văn bản OCR lấy từ đâu
+
+`POST /api/v1/process` của BE nội bộ **không trả về văn bản OCR** — xem `ProcessResp`: chỉ có
+`fields`, `extracted`, `stats`, `pages` (mà `pages` là *các trường theo trang biểu mẫu*, không phải
+trang tài liệu). BE có OCR text nhưng cất trong **trace** của request (`traces.ocr_text`) và chỉ
+cho đọc qua `GET /api/v1/traces` — API **dành riêng cho tài khoản admin của BE**.
+
+Vì vậy backend này có thêm đường lấy OCR:
+
+```
+GET /api/batch/items/{itemId}/ocr
+  → lấy requestId từ kết quả đã lưu
+  → đăng nhập BE bằng APP_INTERNAL_ADMIN_* → GET /api/v1/traces?requestId=…
+  → GET /api/v1/traces/{id} → trả ocr_text
+```
+
+Muốn xem OCR thì điền **tài khoản admin của BE nội bộ** vào `backend/.env`:
+
+```ini
+APP_INTERNAL_ADMIN_USERNAME=<tài khoản admin của BE>
+APP_INTERNAL_ADMIN_PASSWORD=<mật khẩu>
+```
+
+Chưa cấu hình (hoặc tài khoản không phải admin) thì khung OCR **nói rõ lý do** chứ không báo lỗi,
+và vẫn hiện dữ liệu thô của bước quét. Nếu sau này BE trả thẳng `pages[]`/`ocrText`/`extracted.text`
+trong kết quả, khung đó tự hiện văn bản mà không cần tài khoản admin.
+
+Hồ sơ đã đánh dấu **hoàn thiện** thì khung lưu chỉ báo *"✓ Đã lưu & hoàn thiện"* kèm ai lưu
+lúc nào — nút lưu chỉ hiện lại khi thực sự sửa một trường nào đó.
 
 ### Hai chỗ eForm phải sửa cho khớp pipeline
 

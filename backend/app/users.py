@@ -74,7 +74,7 @@ async def authenticate(username: str, password: str) -> dict | None:
 
 # ------------------------------------------------- quan ly tai khoan (admin)
 
-ROLES = ("admin", "tester")
+ROLES = ("admin", "tester", "uploader")
 
 
 def _row(doc: dict) -> dict:

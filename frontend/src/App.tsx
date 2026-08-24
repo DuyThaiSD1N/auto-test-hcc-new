@@ -6,6 +6,7 @@ import ProceduresPage from './pages/ProceduresPage'
 import EformPage from './pages/EformPage'
 import HistoryPage from './pages/HistoryPage'
 import UsersPage from './pages/UsersPage'
+import PoolPage from './pages/PoolPage'
 import LabelsPage from './pages/LabelsPage'
 import ScanPage from './pages/ScanPage'
 
@@ -18,7 +19,7 @@ export default function App() {
           <Route
             path="/thu-tuc"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['admin', 'tester']}>
                 <ProceduresPage />
               </ProtectedRoute>
             }
@@ -26,7 +27,7 @@ export default function App() {
           <Route
             path="/thu-tuc/:key"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['admin', 'tester']}>
                 <ScanPage />
               </ProtectedRoute>
             }
@@ -34,7 +35,7 @@ export default function App() {
           <Route
             path="/thu-tuc/:key/nhan"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['admin', 'tester']}>
                 <LabelsPage />
               </ProtectedRoute>
             }
@@ -42,7 +43,7 @@ export default function App() {
           <Route
             path="/thu-tuc/:key/eform"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['admin', 'tester']}>
                 <EformPage />
               </ProtectedRoute>
             }
@@ -50,8 +51,16 @@ export default function App() {
           <Route
             path="/lich-su"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['admin', 'tester']}>
                 <HistoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/kho-tai-lieu"
+            element={
+              <ProtectedRoute>
+                <PoolPage />
               </ProtectedRoute>
             }
           />

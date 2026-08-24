@@ -7,6 +7,7 @@ import AppLayout from '../components/AppLayout'
 const ROLE_LABEL: Record<string, string> = {
   admin: 'Quản trị',
   tester: 'Người dùng',
+  uploader: 'Tải tài liệu',
 }
 
 interface FormState {
@@ -177,7 +178,13 @@ export default function UsersPage() {
                       </td>
                       <td>
                         <span
-                          className={`status-pill s-${row.role === 'admin' ? 'completed' : 'pending'}`}
+                          className={`status-pill s-${
+                            row.role === 'admin'
+                              ? 'completed'
+                              : row.role === 'uploader'
+                                ? 'draft'
+                                : 'pending'
+                          }`}
                         >
                           {ROLE_LABEL[row.role] ?? row.role}
                         </span>
@@ -256,6 +263,7 @@ export default function UsersPage() {
                 onChange={(e) => setForm({ ...form, role: e.target.value })}
               >
                 <option value="tester">Người dùng — chạy thử, gán nhãn</option>
+                <option value="uploader">Tải tài liệu — chỉ vào kho, tải và phân loại hồ sơ</option>
                 <option value="admin">Quản trị — thêm cả tài khoản và xóa dữ liệu</option>
               </select>
             </label>
@@ -287,7 +295,9 @@ export default function UsersPage() {
 
             <p className="muted-small" style={{ marginTop: 14 }}>
               <strong>Người dùng</strong> chạy được phiên quét, gán nhãn và xem lịch sử.{' '}
-              <strong>Quản trị</strong> có thêm quyền tạo/xóa tài khoản và xóa phiên trong lịch sử.
+              <strong>Tải tài liệu</strong> chỉ vào Kho tài liệu để tải hồ sơ lên và phân loại theo
+              thủ tục. <strong>Quản trị</strong> có thêm quyền tạo/xóa tài khoản, xóa nhãn và xóa
+              phiên trong lịch sử.
             </p>
           </div>
         </div>

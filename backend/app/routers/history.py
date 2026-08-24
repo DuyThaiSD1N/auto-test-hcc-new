@@ -49,8 +49,10 @@ async def list_jobs(
     limit: int = Query(default=50, ge=1, le=200),
     skip: int = Query(default=0, ge=0),
     procedure: str | None = None,
+    q: str | None = None,
 ) -> dict:
-    return await history.list_jobs(limit=limit, skip=skip, procedure=procedure)
+    """`q` tim theo ma test, ten phien hoac jobId."""
+    return await history.list_jobs(limit=limit, skip=skip, procedure=procedure, q=q)
 
 
 @router.get("/jobs/{job_id}")
@@ -80,12 +82,50 @@ async def get_result(item_id: str, _: CurrentUser) -> dict:
 # ---------------------------------------------------------- nhan ket qua dung
 
 
+@router.get("/issue-kinds")
+async def issue_kinds(_: CurrentUser) -> dict:
+    """Danh sach loai loi de giao dien khong phai chep cung."""
+    return {"kinds": list(history.ISSUE_KINDS)}
+
+
 @router.get("/items/{item_id}/label")
 async def get_label(item_id: str, _: CurrentUser) -> dict:
     label = await history.get_label(item_id)
     if label is None:
         raise HTTPException(status_code=404, detail="Ho so nay chua duoc gan nhan.")
     return label
+
+
+@router.delete("/items/{item_id}/result")
+async def delete_result(item_id: str, _: AdminUser) -> dict:
+    """Xoa mot ho so chua gan nhan khoi worklist - chi quan tri."""
+    result = await history.delete_result(item_id)
+    if not result.get("deleted"):
+        raise HTTPException(
+            status_code=int(result.get("code") or 404),
+            detail=result.get("reason") or "Khong tim thay ket qua cua ho so nay.",
+        )
+    return result
+
+
+@router.delete("/labels/unlabeled")
+async def delete_unlabeled(_: AdminUser, procedure: str) -> dict:
+    """Xoa toan bo ho so CHUA gan nhan cua mot thu tuc - chi quan tri."""
+    result = await history.delete_unlabeled_results(procedure)
+    if result.get("code"):
+        raise HTTPException(status_code=int(result["code"]), detail=result.get("reason") or "")
+    return result
+
+
+@router.delete("/items/{item_id}/label")
+async def delete_label(item_id: str, _: AdminUser) -> dict:
+    """Bo nhan cua mot ho so - chi quan tri. Ho so quay ve trang thai "chua gan"."""
+    result = await history.delete_label(item_id)
+    if not result.get("deleted"):
+        raise HTTPException(
+            status_code=404, detail=result.get("reason") or "Ho so nay chua duoc gan nhan."
+        )
+    return result
 
 
 @router.put("/items/{item_id}/label")
@@ -97,6 +137,7 @@ async def save_label(
     fields = payload.get("fields")
     if not isinstance(fields, list):
         raise HTTPException(status_code=400, detail="Thieu danh sach truong (fields).")
+    issues = payload.get("issues")
     result = await history.save_label(
         item_id,
         payload.get("jobId"),
@@ -105,7 +146,12 @@ async def save_label(
         fields,
         current_user.username,
         status=str(payload.get("status") or "draft"),
+        note=payload.get("note"),
+        issues=issues if isinstance(issues, list) else None,
     )
     if not result.get("saved"):
-        raise HTTPException(status_code=503, detail=result.get("reason") or "Khong luu duoc nhan.")
+        raise HTTPException(
+            status_code=int(result.get("code") or 503),
+            detail=result.get("reason") or "Khong luu duoc nhan.",
+        )
     return result
