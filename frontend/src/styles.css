@@ -1909,3 +1909,34 @@ select:disabled {
   height: 34px;
   min-width: 220px;
 }
+
+/* ---------- Ba khoi cua man hinh gan nhan: chi hien mot ---------- */
+
+.pane-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Tab "Tong hop phien" */
+.session-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 20px;
+  background: var(--surface);
+}
+
+.session-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.session-head strong {
+  font-size: 15px;
+}

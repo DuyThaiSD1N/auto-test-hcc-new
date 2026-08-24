@@ -448,13 +448,20 @@ và trắng cả trang.
 
 ### Màn hình gán nhãn có gì
 
-Hai tab, chia đôi màn hình với cột sửa trường bên phải:
+Ba tab, chia đôi màn hình với cột sửa trường bên phải:
 
 - **Form đã điền** — eForm thật, tự điền theo dữ liệu hiện tại.
+- **Tổng hợp phiên** — toàn bộ hồ sơ của phiên quét chứa hồ sơ đang mở: kết quả, mốc thời gian,
+  nguồn bóc tách, và bảng từng hồ sơ (trạng thái, số trường, nhãn) kèm nút *Mở hồ sơ này* để
+  nhảy thẳng sang hồ sơ khác mà không phải quay về danh sách.
 - **JSON bóc tách** — xếp hai khung chồng nhau: trên là **OCR — bản quét đọc ra gì**
   (văn bản OCR từng trang nếu nguồn bóc tách trả về, kèm tên file, thời gian OCR/LLM và
   mã phiên), dưới là **JSON bóc tách** đầy đủ. Nút *Mở rộng toàn màn hình* giấu cột sửa
-  trường để đọc cho dễ, *Chép JSON* copy nguyên khối. Mở thẳng tab này bằng `?view=json`.
+  trường để đọc cho dễ, *Chép JSON* copy nguyên khối. Mở thẳng một tab bằng `?view=json`
+  hoặc `?view=phien`.
+
+Cả ba tab **luôn nằm trong DOM**, chuyển tab chỉ ẩn/hiện. Nhờ vậy sang JSON rồi quay lại
+*Form đã điền* là thấy nguyên form đã điền (giữ cả vị trí cuộn), không chạy lại tiến trình điền.
 
 #### Văn bản OCR lấy từ đâu
 

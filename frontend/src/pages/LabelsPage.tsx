@@ -38,6 +38,8 @@ export default function LabelsPage() {
   const [editing, setEditing] = useState<string | null>(null)
   const [editFields, setEditFields] = useState<BatchField[]>([])
   const [editNote, setEditNote] = useState('')
+  // Có sửa gì chưa — hồ sơ đang lỗi thì phải sửa rồi mới hoàn thiện được
+  const [editDirty, setEditDirty] = useState(false)
   const [editIssues, setEditIssues] = useState<string[]>([])
   const [editLoading, setEditLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -71,6 +73,7 @@ export default function LabelsPage() {
   // ------------------------------------------------------------ sửa tại chỗ
 
   async function openEdit(it: WorklistItem) {
+    setEditDirty(false)
     setEditNote(it.note ?? '')
     setEditIssues(it.issues ?? [])
     if (editing === it.itemId) {
@@ -139,6 +142,10 @@ export default function LabelsPage() {
   async function persist(it: WorklistItem, status: 'draft' | 'error' | 'done') {
     if (status === 'error' && editIssues.length === 0) {
       setError('Chọn ít nhất một loại lỗi trước khi lưu lỗi.')
+      return
+    }
+    if (status === 'done' && it.status === 'error' && !editDirty) {
+      setError('Hồ sơ đang là lỗi. Sửa lại dữ liệu rồi mới đánh dấu hoàn thiện được.')
       return
     }
     setSaving(true)
@@ -324,7 +331,13 @@ export default function LabelsPage() {
                                 <p className="muted-small">Đang tải dữ liệu…</p>
                               ) : (
                                 <div className="inline-edit">
-                                  <FieldsEditor fields={editFields} onChange={setEditFields} />
+                                  <FieldsEditor
+                                    fields={editFields}
+                                    onChange={(next) => {
+                                      setEditFields(next)
+                                      setEditDirty(true)
+                                    }}
+                                  />
 
                                   <div className="issue-tags">
                                     {Object.entries(ISSUE_LABEL).map(([kind, label]) => (
@@ -369,7 +382,12 @@ export default function LabelsPage() {
                                     <button
                                       className="primary-btn inline"
                                       onClick={() => persist(it, 'done')}
-                                      disabled={saving}
+                                      disabled={saving || (it.status === 'error' && !editDirty)}
+                                      title={
+                                        it.status === 'error' && !editDirty
+                                          ? 'Hồ sơ đang là lỗi — sửa lại dữ liệu rồi mới hoàn thiện được'
+                                          : undefined
+                                      }
                                     >
                                       {saving ? 'Đang lưu…' : 'Lưu & hoàn thiện'}
                                     </button>

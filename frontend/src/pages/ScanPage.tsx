@@ -593,7 +593,6 @@ export default function ScanPage() {
                           </span>
                           <span className="muted-small">
                             {it.fileCount} file · {formatSize(it.totalBytes)} · {it.uploadedBy}
-                            {it.useCount > 0 ? ` · đã chạy ${it.useCount} lần` : ''}
                           </span>
                           {it.note && <span className="muted-small">Ghi chú: {it.note}</span>}
                         </span>

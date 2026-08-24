@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { BatchField, ItemOcr, Procedure } from '../api/types'
+import type { BatchField, HistoryJobDetail, ItemOcr, Procedure } from '../api/types'
 import { ISSUE_LABEL } from '../api/types'
 import { eformUrl } from '../eform/registry'
 import AppLayout from '../components/AppLayout'
@@ -9,7 +9,7 @@ import { fillEform } from '../eform/runFill'
 import type { FillResult } from '../eform/runFill'
 import { useAuth } from '../auth/AuthContext'
 
-type View = 'eform' | 'json'
+type View = 'eform' | 'json' | 'phien'
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -98,6 +98,21 @@ function readOcr(raw: unknown): OcrView {
   }
 }
 
+function formatTime(value: string | null | undefined): string {
+  if (!value) return '—'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('vi-VN')
+}
+
+/** Khoảng thời gian giữa hai mốc, dạng người đọc được */
+function duration(from: string | null | undefined, to: string | null | undefined): string | null {
+  if (!from || !to) return null
+  const msec = new Date(to).getTime() - new Date(from).getTime()
+  if (Number.isNaN(msec) || msec < 0) return null
+  if (msec < 60_000) return `${(msec / 1000).toFixed(1).replace('.', ',')} giây`
+  return `${Math.floor(msec / 60_000)} phút ${Math.round((msec % 60_000) / 1000)} giây`
+}
+
 /** "12 ms" / "5,0 giây" - stats của pipeline tính bằng mili giây */
 function ms(value: unknown): string | null {
   if (typeof value !== 'number' || Number.isNaN(value)) return null
@@ -118,9 +133,11 @@ export default function EformPage() {
   const [labeledInfo, setLabeledInfo] = useState<string | null>(null)
   // Mở thẳng một tab qua URL (?view=json) — tiện gửi link cho nhau xem JSON.
   // Không có eForm dựng sẵn thì cũng vào thẳng tab JSON (đỡ hiện tab Form trống).
-  const [view, setView] = useState<View>(
-    params.get('view') === 'json' || !eformUrl(key) ? 'json' : 'eform',
-  )
+  const [view, setView] = useState<View>(() => {
+    const wanted = params.get('view')
+    if (wanted === 'json' || wanted === 'phien') return wanted
+    return eformUrl(key) ? 'eform' : 'json'
+  })
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
@@ -215,8 +232,11 @@ export default function EformPage() {
 
   // Tự lưu tiến trình: sau khi sửa 1.2s không thao tác thì lưu nháp, không mất khi
   // chuyển tab hay mở lại từ lịch sử. Giữ nguyên trạng thái "done" nếu đã hoàn thiện.
+  //
+  // KHÔNG tự lưu khi hồ sơ đang là "lỗi": sửa một hồ sơ lỗi là đang chữa nó, phải tự
+  // bấm nút để chốt xem chữa xong (hoàn thiện) hay vẫn còn lỗi.
   useEffect(() => {
-    if (!dirty || !itemId || fields.length === 0) return
+    if (!dirty || !itemId || fields.length === 0 || status === 'error') return
     const t = setTimeout(async () => {
       try {
         const keep = status === 'pending' ? 'draft' : status
@@ -313,6 +333,10 @@ export default function EformPage() {
     if (!itemId) return
     if (next === 'error' && issues.length === 0) {
       setError('Chọn ít nhất một loại lỗi trước khi lưu lỗi.')
+      return
+    }
+    if (next === 'done' && status === 'error' && !dirty) {
+      setError('Hồ sơ đang là lỗi. Sửa lại dữ liệu rồi mới đánh dấu hoàn thiện được.')
       return
     }
     setSaving(true)
@@ -438,6 +462,12 @@ export default function EformPage() {
           >
             JSON bóc tách
           </button>
+          <button
+            className={`chip${view === 'phien' ? ' active' : ''}`}
+            onClick={() => setView('phien')}
+          >
+            Tổng hợp phiên
+          </button>
         </span>
         {labeled && <span className="badge-labeled">● Đã gán nhãn</span>}
       </div>
@@ -459,7 +489,9 @@ export default function EformPage() {
       ) : (
         <div className={`eform-split${view === 'json' && jsonFull ? ' json-full' : ''}`}>
           <div className="doc-pane">
-            {view === 'eform' ? (
+            {/* Cả ba khối luôn nằm trong DOM, chỉ ẩn/hiện. Nhờ vậy quay lại tab
+                "Form đã điền" là thấy nguyên form đã điền, không phải điền lại từ đầu. */}
+            <div className="pane-slot" hidden={view !== 'eform'}>
               <>
                 <div className="doc-tabs">
                   <button className="primary-btn inline" onClick={handleFill} disabled={filling}>
@@ -489,7 +521,9 @@ export default function EformPage() {
                   <div className="empty">Thủ tục này chưa có eForm dựng sẵn.</div>
                 )}
               </>
-            ) : (
+            </div>
+
+            <div className="pane-slot" hidden={view !== 'json'}>
               <>
                 <div className="doc-tabs">
                   <button className="ghost-btn" onClick={() => setJsonFull((v) => !v)}>
@@ -590,7 +624,15 @@ export default function EformPage() {
                   </section>
                 </div>
               </>
-            )}
+            </div>
+
+            <div className="pane-slot" hidden={view !== 'phien'}>
+              <SessionSummary
+                itemId={itemId}
+                active={view === 'phien'}
+                onOpen={(next) => navigate(`/thu-tuc/${key}/eform?item=${next}`)}
+              />
+            </div>
           </div>
 
           <aside className="label-pane">
@@ -704,7 +746,12 @@ export default function EformPage() {
                     <button
                       className="primary-btn inline"
                       onClick={() => save('done')}
-                      disabled={saving || !fields.length}
+                      disabled={saving || !fields.length || (status === 'error' && !dirty)}
+                      title={
+                        status === 'error' && !dirty
+                          ? 'Hồ sơ đang là lỗi — sửa lại dữ liệu rồi mới hoàn thiện được'
+                          : undefined
+                      }
                     >
                       {saving ? 'Đang lưu…' : 'Lưu & hoàn thiện'}
                     </button>
@@ -718,7 +765,8 @@ export default function EformPage() {
                           ` — ${issues.map((k) => ISSUE_LABEL[k] ?? k).join(', ')}`}
                       </span>
                       <span className="muted-small">
-                        Sửa lại rồi bấm “Lưu &amp; hoàn thiện” — lúc đó tag lỗi sẽ được gỡ.
+                        Không tự lưu ở trạng thái lỗi. Sửa lại dữ liệu rồi bấm “Lưu &amp; hoàn
+                        thiện” — lúc đó tag lỗi sẽ được gỡ.
                       </span>
                       {user?.role === 'admin' && labeled && (
                         <button className="ghost-btn danger" onClick={removeLabel}>
@@ -741,7 +789,9 @@ export default function EformPage() {
                     </div>
                   )}
                   {dirty ? (
-                    <span className="muted-small">Đang chờ tự lưu…</span>
+                    <span className="muted-small">
+                      {status === 'error' ? 'Đã sửa — bấm nút để lưu lại.' : 'Đang chờ tự lưu…'}
+                    </span>
                   ) : autoSaveMsg ? (
                     <span className="muted-small ok-text">{autoSaveMsg}</span>
                   ) : null}
@@ -753,5 +803,149 @@ export default function EformPage() {
         </div>
       )}
     </AppLayout>
+  )
+}
+
+const LABEL_STATUS: Record<string, string> = {
+  draft: 'Đang sửa',
+  error: 'Lỗi',
+  done: 'Hoàn thiện',
+}
+
+/**
+ * Tab "Tổng hợp phiên": toàn bộ hồ sơ của phiên quét chứa hồ sơ đang mở —
+ * chạy ra sao, hồ sơ nào đã gán nhãn, và nhảy thẳng sang hồ sơ khác mà không
+ * phải quay về danh sách.
+ */
+function SessionSummary({
+  itemId,
+  active,
+  onOpen,
+}: {
+  itemId: string | null
+  active: boolean
+  onOpen: (itemId: string) => void
+}) {
+  const [job, setJob] = useState<HistoryJobDetail | null>(null)
+  const [state, setState] = useState<'cho' | 'dang-tai' | 'xong' | 'khong-co'>('cho')
+
+  useEffect(() => {
+    setJob(null)
+    setState('cho')
+  }, [itemId])
+
+  useEffect(() => {
+    if (!active || !itemId || state !== 'cho') return
+    setState('dang-tai')
+    ;(async () => {
+      try {
+        const res = await api.historyResult(itemId)
+        if (!res.jobId) {
+          setState('khong-co')
+          return
+        }
+        setJob(await api.historyJob(res.jobId))
+        setState('xong')
+      } catch {
+        setState('khong-co')
+      }
+    })()
+  }, [active, itemId, state])
+
+  if (state === 'dang-tai' || state === 'cho') {
+    return <div className="session-pane muted-small">Đang tải phiên quét…</div>
+  }
+  if (state === 'khong-co' || !job) {
+    return (
+      <div className="session-pane">
+        <div className="empty">
+          Hồ sơ này không gắn với phiên quét nào còn trong lịch sử (phiên có thể đã bị xóa).
+        </div>
+      </div>
+    )
+  }
+
+  const took = duration(job.startedAt, job.finishedAt)
+
+  return (
+    <div className="session-pane">
+      <div className="session-head">
+        <div>
+          <strong>{job.name || job.jobId}</strong>
+          <span className="muted-small mono"> · {job.testCode || job.jobId}</span>
+        </div>
+        <span className={`status-pill s-${job.status}`}>{job.status}</span>
+      </div>
+
+      <div className="fact-grid">
+        <div>
+          <dt>Kết quả</dt>
+          <dd>
+            {job.counts?.done ?? 0} xong · {job.counts?.failed ?? 0} lỗi /{' '}
+            {job.counts?.total ?? 0} hồ sơ
+          </dd>
+        </div>
+        <div>
+          <dt>Bắt đầu</dt>
+          <dd>{formatTime(job.startedAt)}</dd>
+        </div>
+        <div>
+          <dt>Kết thúc</dt>
+          <dd>
+            {formatTime(job.finishedAt)}
+            {took && <span className="muted-small"> (chạy {took})</span>}
+          </dd>
+        </div>
+        <div>
+          <dt>Nguồn bóc tách</dt>
+          <dd>{job.provider === 'internal' ? 'BE nội bộ' : 'API theo lô'}</dd>
+        </div>
+      </div>
+
+      <div className="table-scroll" style={{ marginTop: 14 }}>
+        <table className="dossier-table">
+          <thead>
+            <tr>
+              <th>Mã hồ sơ</th>
+              <th>Trạng thái</th>
+              <th>Trường</th>
+              <th>Nhãn</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {job.items.map((it) => (
+              <tr key={it.itemId} className={it.itemId === itemId ? 'row-open' : ''}>
+                <td>
+                  {it.clientDossierId}
+                  {it.itemId === itemId && <span className="tag-default">đang mở</span>}
+                </td>
+                <td>
+                  <span className={`status-pill s-${it.status}`}>{it.status}</span>
+                  {it.error && <div className="muted-small error-text">{it.error}</div>}
+                </td>
+                <td>{it.resultFieldCount ?? 0}</td>
+                <td>
+                  {it.labelStatus ? (
+                    <span className={`status-pill s-${it.labelStatus}`}>
+                      {LABEL_STATUS[it.labelStatus] ?? it.labelStatus}
+                    </span>
+                  ) : (
+                    <span className="muted-small">chưa gán</span>
+                  )}
+                </td>
+                <td className="row-actions">
+                  {it.hasResult && it.itemId !== itemId && (
+                    <button className="ghost-btn" onClick={() => onOpen(it.itemId)}>
+                      Mở hồ sơ này
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
