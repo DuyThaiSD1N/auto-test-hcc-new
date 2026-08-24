@@ -175,8 +175,8 @@ Nguồn bóc tách chỉ nhận JPG, PNG, PDF, DOCX. [`files.py`](backend/app/fi
 | `.doc` `.rtf` `.odt` | chuyển sang PDF bằng LibreOffice — **cần cài `soffice`** |
 
 Chưa cài LibreOffice thì `.doc` báo lỗi kèm hướng dẫn thay vì im lặng hỏng. Trên máy cá nhân: cài
-LibreOffice (hoặc mở file rồi lưu thành `.docx`). Trong Docker: thêm vào `Dockerfile`
-`RUN apt-get update && apt-get install -y libreoffice-writer` (image tăng khoảng 400MB).
+LibreOffice (hoặc mở file rồi lưu thành `.docx`). **Trong Docker thì đã có sẵn** — `Dockerfile`
+cài `libreoffice-writer` (image tăng khoảng 400MB); bỏ dòng đó nếu chắc chắn chỉ nhận PDF/ảnh.
 
 Giao diện tự lấy danh sách đuôi từ `/api/batch/status`, không chép cứng ở hai nơi.
 
@@ -585,11 +585,30 @@ nên chỉ cần mở 1 port, không phải cấu hình CORS, không lo lệch d
 |---|---|---|
 | Cấu hình | `APP_INTERNAL_*` | `APP_BATCH_API_BASE_URL` + `APP_BATCH_API_SECRET` |
 | Máy chủ cần | thấy được BE nội bộ (LAN/VPN) | chỉ cần ra Internet |
-| Xem văn bản OCR | ✅ (qua `/api/v1/traces`, cần tài khoản admin BE) | ❌ API theo lô không trả OCR |
+| Xem văn bản OCR | ✅ (qua `/api/v1/traces`, cần tài khoản admin) | ❌ **không có** — worker của API lô không ghi trace |
 | Hàng đợi | backend này tự xếp trong bộ nhớ | phía Auto Fill HCC lo |
 
-Deploy lên máy chủ ngoài thì `batch` gọn hơn nhiều — không phải mở đường tới BE nội bộ.
-Đổi lại mất tab OCR; khung OCR sẽ nói rõ lý do chứ không báo lỗi mơ hồ.
+Deploy lên máy chủ ngoài thì `batch` gọn hơn — không phải mở đường tới BE nội bộ. Đổi lại **mất
+tab OCR**: worker của API theo lô không ghi `trace`, mà OCR chỉ đọc được từ đó. Khung OCR sẽ nói
+rõ lý do chứ không báo lỗi mơ hồ.
+
+#### Muốn có OCR trên máy chủ ngoài
+
+Host `https://trolyhoso-hcc-admin.vnekyc.vn` chạy **cùng một ứng dụng** với BE nội bộ — nó có đủ
+`/auth/login`, `/api/v1/process` và `/api/v1/traces`. Nên cách giữ được OCR là **dùng nguồn
+`internal` nhưng trỏ vào host công khai đó**, không cần LAN/VPN:
+
+```ini
+APP_EXTRACT_PROVIDER=internal
+APP_INTERNAL_API_BASE_URL=https://trolyhoso-hcc-admin.vnekyc.vn
+APP_INTERNAL_USERNAME=<tài khoản thường trên hệ thống đó>
+APP_INTERNAL_PASSWORD=...
+APP_INTERNAL_ADMIN_USERNAME=<tài khoản admin trên hệ thống đó>   # để đọc OCR
+APP_INTERNAL_ADMIN_PASSWORD=...
+```
+
+Hai tài khoản này phải do đội Auto Fill HCC cấp **trên chính hệ thống công khai** — tài khoản của
+container chạy ở máy cá nhân không dùng được (đã thử: trả `INVALID_CREDENTIALS`).
 
 ### Cách 1 — Docker (khuyến nghị)
 

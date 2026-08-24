@@ -13,6 +13,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv
 
+# LibreOffice de chuyen DOC/RTF/ODT sang PDF truoc khi boc tach (app/files.py goi `soffice`).
+# Khong co no thi ba duoi file do bao loi; JPG/PNG/PDF/DOCX van chay binh thuong.
+# Chiem them ~400MB image - bo khoi nay neu chac chan chi nhan PDF/anh.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libreoffice-writer \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
