@@ -19,6 +19,7 @@ import type {
   ProcedureListResponse,
   User,
 } from './types'
+import { apiUrl, appConfig } from './config'
 
 const TOKEN_KEY = 'hcc.access_token'
 
@@ -43,11 +44,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (token) headers.set('Authorization', `Bearer ${token}`)
 
+  // Hạn thời gian chỉ bật khi config đặt > 0 — bóc tách một hồ sơ có thể mất vài phút
+  const timeout = appConfig.requestTimeoutMs
+  const aborter = timeout > 0 ? new AbortController() : null
+  const timer = aborter ? setTimeout(() => aborter.abort(), timeout) : null
+
   let res: Response
   try {
-    res = await fetch(`/api${path}`, { ...init, headers })
-  } catch {
+    res = await fetch(apiUrl(path), { ...init, headers, signal: aborter?.signal })
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(0, `Máy chủ không trả lời trong ${Math.round(timeout / 1000)} giây.`)
+    }
     throw new ApiError(0, 'Không kết nối được máy chủ. Kiểm tra backend đã chạy chưa.')
+  } finally {
+    if (timer) clearTimeout(timer)
   }
 
   // Token cũ/hết hạn: dọn luôn rồi đưa về trang đăng nhập, tránh kẹt ở màn hình

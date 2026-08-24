@@ -93,6 +93,30 @@ giao diện** — phải đổi trong `backend/.env` rồi khởi động lại 
 
 ## Giao diện
 
+### Đổi chỗ gọi backend mà không build lại
+
+[`frontend/public/config.js`](frontend/public/config.js) là cấu hình **chạy-thật**, Vite chép
+nguyên xi sang `dist/config.js` và `index.html` nạp nó trước mã ứng dụng:
+
+```js
+window.__APP_CONFIG__ = {
+  apiBaseUrl: '',        // '' = cùng origin; 'https://api.tenmien.vn' = backend máy khác
+  requestTimeoutMs: 0,   // 0 = chờ đến khi xong (bóc tách một hồ sơ có thể vài phút)
+}
+```
+
+Sửa file này trên máy chủ rồi F5 là ăn ngay — **không cần build lại**. Trong Docker thì mount đè:
+
+```yaml
+volumes:
+  - ./config.js:/srv/frontend_dist/config.js:ro
+```
+
+Trỏ sang origin khác thì backend phải liệt kê origin của giao diện trong `APP_CORS_ORIGINS`,
+nếu không trình duyệt chặn ở bước preflight. Thiếu file hoặc thiếu khóa thì code lùi về mặc định
+an toàn (cùng origin, không hạn thời gian) — xem [`src/api/config.ts`](frontend/src/api/config.ts).
+
+
 Mọi trang sau khi đăng nhập dùng chung khung [`components/AppLayout.tsx`](frontend/src/components/AppLayout.tsx):
 thanh điều hướng bên trái (Thủ tục · Lịch sử · Tài khoản cho admin, kèm hộp người dùng + đăng xuất)
 và thanh tiêu đề dính ở trên chứa tên trang và các nút thao tác của riêng trang đó.
@@ -447,6 +471,15 @@ không phải chuỗi. Mọi chỗ hiển thị phải đi qua
 và trắng cả trang.
 
 ### Màn hình gán nhãn có gì
+
+Cột phải liệt kê **toàn bộ ô của biểu mẫu**, theo đúng thứ tự trên form. Ô nào pipeline không
+trả dữ liệu thì hiện **`null`** (viền đứt, chữ mờ) chứ không bị giấu đi — nhìn là biết ngay chỗ
+nào còn thiếu. Gõ vào một ô `null` là trường đó được thêm vào nhãn. Trường pipeline trả về mà
+biểu mẫu không có ô nào khớp thì xếp cuối, gắn thẻ *không có trên form*.
+
+Danh sách ô lấy từ chính eForm: mỗi file trong `public/eform/` công bố
+`window.__HCC_FORM_FIELDS__` sinh từ `SPEC` của nó, nên **không bao giờ lệch với form**.
+Thêm ô mới vào `SPEC` là cột bên phải tự có, không phải sửa gì ở app.
 
 Ba tab, chia đôi màn hình với cột sửa trường bên phải:
 

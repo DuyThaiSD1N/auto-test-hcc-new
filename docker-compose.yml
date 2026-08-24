@@ -19,6 +19,9 @@ services:
       APP_INTERNAL_USERNAME: ${APP_INTERNAL_USERNAME:-}
       APP_INTERNAL_PASSWORD: ${APP_INTERNAL_PASSWORD:-}
       APP_INTERNAL_CONCURRENCY: ${APP_INTERNAL_CONCURRENCY:-2}
+      # Tai khoan admin cua BE noi bo - chi de doc van ban OCR (/api/v1/traces)
+      APP_INTERNAL_ADMIN_USERNAME: ${APP_INTERNAL_ADMIN_USERNAME:-}
+      APP_INTERNAL_ADMIN_PASSWORD: ${APP_INTERNAL_ADMIN_PASSWORD:-}
       APP_MONGO_URI: ${APP_MONGO_URI:-mongodb://mongo:27017}
       APP_MONGO_DB: ${APP_MONGO_DB:-auto_test_hcc}
     depends_on:

@@ -1940,3 +1940,26 @@ select:disabled {
 .session-head strong {
   font-size: 15px;
 }
+
+/* O cua form ma pipeline khong tra du lieu */
+.label-field.empty .label-input,
+.label-field.empty .area-edit-row input {
+  border-style: dashed;
+  background: var(--surface-2);
+}
+
+.label-field.empty .label-name {
+  color: var(--muted-2);
+}
+
+.tag-null {
+  margin-left: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-border);
+  border-radius: 5px;
+  padding: 0 6px;
+}

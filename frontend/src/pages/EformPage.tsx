@@ -5,8 +5,8 @@ import type { BatchField, HistoryJobDetail, ItemOcr, Procedure } from '../api/ty
 import { ISSUE_LABEL } from '../api/types'
 import { eformUrl } from '../eform/registry'
 import AppLayout from '../components/AppLayout'
-import { fillEform } from '../eform/runFill'
-import type { FillResult } from '../eform/runFill'
+import { fillEform, readFormFields } from '../eform/runFill'
+import type { FillResult, FormField } from '../eform/runFill'
 import { useAuth } from '../auth/AuthContext'
 
 type View = 'eform' | 'json' | 'phien'
@@ -27,6 +27,58 @@ function orderedKeys(obj: Record<string, unknown>): string[] {
   const known = AREA_KEYS.filter((k) => k in obj)
   const rest = Object.keys(obj).filter((k) => !AREA_KEYS.includes(k))
   return [...known, ...rest]
+}
+
+/** Một dòng trong cột "Dữ liệu bóc tách": ô của form + giá trị (nếu có) */
+interface Row {
+  name: string
+  comp: string
+  label: string | null
+  /** Vị trí trong mảng fields; -1 = form có ô này nhưng chưa có dữ liệu */
+  index: number
+  value: BatchField['value'] | null
+  /** false = pipeline trả về nhưng biểu mẫu không có ô tương ứng */
+  inForm: boolean
+}
+
+/**
+ * Ghép danh sách ô của biểu mẫu với dữ liệu bóc tách.
+ *
+ * Đi theo THỨ TỰ CỦA FORM để đối chiếu cho dễ; ô nào pipeline không trả thì để value = null
+ * (hiện ra chứ không giấu, có vậy mới thấy chỗ nào còn thiếu). Trường pipeline trả về mà form
+ * không có ô nào khớp vẫn xếp xuống cuối — không giấu dữ liệu của ai cả.
+ */
+function mergeRows(formFields: FormField[], fields: BatchField[]): Row[] {
+  if (formFields.length === 0) {
+    return fields.map((f, i) => ({
+      name: f.name,
+      comp: f.comp ?? '',
+      label: null,
+      index: i,
+      value: f.value,
+      inForm: true,
+    }))
+  }
+
+  const used = new Set<number>()
+  const rows: Row[] = formFields.map((ff) => {
+    const index = fields.findIndex((f, i) => f.name === ff.name && !used.has(i))
+    if (index >= 0) used.add(index)
+    return {
+      name: ff.name,
+      comp: ff.comp || fields[index]?.comp || '',
+      label: ff.label,
+      index,
+      value: index >= 0 ? fields[index].value : null,
+      inForm: true,
+    }
+  })
+
+  fields.forEach((f, i) => {
+    if (used.has(i)) return
+    rows.push({ name: f.name, comp: f.comp ?? '', label: null, index: i, value: f.value, inForm: false })
+  })
+  return rows
 }
 
 interface OcrView {
@@ -157,9 +209,14 @@ export default function EformPage() {
   // Khối nào đang chiếm hết chiều cao: cả hai / chỉ OCR / chỉ JSON
   const [stack, setStack] = useState<'ca-hai' | 'ocr' | 'json'>('ca-hai')
   const [autoSaveMsg, setAutoSaveMsg] = useState<string | null>(null)
+  // Toàn bộ ô của biểu mẫu (kể cả ô pipeline không trả) — đọc từ chính eForm
+  const [formFields, setFormFields] = useState<FormField[]>([])
 
   // Phần OCR của tab JSON, đọc lại mỗi khi có kết quả mới
   const ocr = useMemo(() => readOcr(rawResult), [rawResult])
+  // Mọi ô của form + dữ liệu tương ứng (ô chưa có dữ liệu -> null)
+  const rows = useMemo(() => mergeRows(formFields, fields), [formFields, fields])
+  const filledCount = rows.filter((r) => r.index >= 0).length
   // Kết quả bóc tách không kèm văn bản OCR -> hỏi thêm backend (nó đọc trace của nguồn bóc tách)
   const [ocrRemote, setOcrRemote] = useState<ItemOcr | 'dang-tai' | null>(null)
   const hasOcrText =
@@ -278,6 +335,18 @@ export default function EformPage() {
       )
   }, [view, itemId, ocr, ocrRemote])
 
+  // Biểu mẫu vừa dựng xong: lấy danh sách ô để cột bên phải hiện được cả ô còn trống
+  useEffect(() => {
+    if (!frameReady) return
+    setFormFields(readFormFields(frameRef.current))
+  }, [frameReady, frameEpoch])
+
+  // Biểu mẫu vừa dựng xong: lấy danh sách ô để cột bên phải hiện được cả ô còn trống
+  useEffect(() => {
+    if (!frameReady) return
+    setFormFields(readFormFields(frameRef.current))
+  }, [frameReady, frameEpoch])
+
   // Tự điền eForm khi mở (sau khi có dữ liệu) — "form đã điền những gì"
   useEffect(() => {
     if (view !== 'eform' || !frameReady || fields.length === 0) return
@@ -293,6 +362,12 @@ export default function EformPage() {
 
   const setStringValue = useCallback((index: number, value: string) => {
     setFields((prev) => prev.map((f, i) => (i === index ? { ...f, value } : f)))
+    setDirty(true)
+  }, [])
+
+  /** Gõ vào một ô form chưa có dữ liệu -> thêm hẳn trường đó vào nhãn */
+  const addFieldValue = useCallback((row: Row, value: BatchField['value']) => {
+    setFields((prev) => [...prev, { name: row.name, comp: row.comp, value }])
     setDirty(true)
   }, [])
 
@@ -638,39 +713,66 @@ export default function EformPage() {
           <aside className="label-pane">
             <div className="label-head">
               <h3>Dữ liệu bóc tách — sửa cho đúng</h3>
-              <span className="counter">{fields.length} trường</span>
+              <span className="counter">
+                {formFields.length > 0
+                  ? `${filledCount}/${rows.length} ô có dữ liệu`
+                  : `${rows.length} trường`}
+              </span>
             </div>
             {labeledInfo && <p className="muted-small">{labeledInfo}</p>}
 
             <div className="label-fields">
-              {fields.map((f, i) => (
-                <div className="label-field" key={`${f.name}-${i}`}>
-                  <label className="label-name" title={f.comp ?? undefined}>
-                    {f.name}
-                    {f.default && <span className="tag-default">mặc định</span>}
-                  </label>
-                  {isObject(f.value) ? (
-                    <div className="area-edit">
-                      {orderedKeys(f.value).map((k) => (
-                        <div className="area-edit-row" key={k}>
-                          <span>{AREA_LABEL[k] ?? k}</span>
-                          <input
-                            value={String((f.value as Record<string, unknown>)[k] ?? '')}
-                            onChange={(e) => setAreaValue(i, k, e.target.value)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <input
-                      className="label-input"
-                      value={f.value === null || f.value === undefined ? '' : String(f.value)}
-                      onChange={(e) => setStringValue(i, e.target.value)}
-                    />
-                  )}
-                </div>
-              ))}
-              {fields.length === 0 && <p className="muted-small">Chưa có dữ liệu.</p>}
+              {rows.map((row, i) => {
+                const empty = row.index < 0
+                const f = row.index >= 0 ? fields[row.index] : null
+                const isArea = isObject(row.value) || row.comp === 'x-select-area'
+                return (
+                  <div
+                    className={`label-field${empty ? ' empty' : ''}`}
+                    key={`${row.name}-${i}`}
+                  >
+                    <label className="label-name" title={row.label ?? row.comp}>
+                      {row.name}
+                      {f?.default && <span className="tag-default">mặc định</span>}
+                      {empty && <span className="tag-null">null</span>}
+                      {!row.inForm && <span className="tag-default">không có trên form</span>}
+                    </label>
+                    {isArea ? (
+                      <div className="area-edit">
+                        {(isObject(row.value) ? orderedKeys(row.value) : AREA_KEYS).map((k) => (
+                          <div className="area-edit-row" key={k}>
+                            <span>{AREA_LABEL[k] ?? k}</span>
+                            <input
+                              value={
+                                isObject(row.value)
+                                  ? String((row.value as Record<string, unknown>)[k] ?? '')
+                                  : ''
+                              }
+                              onChange={(e) =>
+                                empty
+                                  ? addFieldValue(row, { [k]: e.target.value })
+                                  : setAreaValue(row.index, k, e.target.value)
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <input
+                        className="label-input"
+                        placeholder={empty ? 'null — pipeline không trả trường này' : undefined}
+                        value={row.value === null || row.value === undefined ? '' : String(row.value)}
+                        onChange={(e) =>
+                          empty
+                            ? addFieldValue(row, e.target.value)
+                            : setStringValue(row.index, e.target.value)
+                        }
+                      />
+                    )}
+                  </div>
+                )
+              })}
+              {rows.length === 0 && <p className="muted-small">Chưa có dữ liệu.</p>}
             </div>
 
             <div className="label-actions">

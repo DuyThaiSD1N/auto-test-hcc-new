@@ -407,6 +407,39 @@
                 { label: "Số lượng bản sao:", name: "SoLuong", comp: "raw", short: true },
             ];
 
+        // ─────────────── công bố danh sách ô cho ứng dụng bên ngoài ───────────────
+        // Cột "Dữ liệu bóc tách" của app cần biết form CÓ NHỮNG Ô NÀO để hiện cả những ô
+        // pipeline không trả về (giá trị null). Đọc từ chính SPEC nên không bao giờ lệch với form.
+        window.__HCC_FORM_FIELDS__ = (() => {
+          const out = [];
+          let section = null;
+          const push = (name, comp, label) => {
+            if (!name || out.some((f) => f.name === name)) return;
+            out.push({ name, comp: comp || "x-input", label: label || null, section });
+          };
+          for (const spec of SPEC) {
+            if (spec.section) { section = spec.section; continue; }
+            push(spec.name, spec.comp, spec.label);
+            // Ô địa chỉ và ô "Khác" chỉ hiện ra khi chọn đúng lựa chọn, nhưng vẫn là ô của form
+            if (spec.area) {
+              push(spec.area, "x-select-area", (spec.label || spec.name) + " — địa chỉ");
+              push(spec.area + "_Khac", "x-input", (spec.label || spec.name) + " — khác");
+            }
+            if (spec.revealOn && spec.revealOn.area) {
+              push(spec.revealOn.area, "x-input", (spec.label || spec.name) + " — khác");
+            }
+            for (const extra of spec.after || []) {
+              push(extra.name, extra.comp, extra.label);
+              if (extra.area) push(extra.area, "x-select-area", (extra.label || extra.name) + " — địa chỉ");
+              if (extra.revealOn && extra.revealOn.area) {
+                push(extra.revealOn.area, "x-input", (extra.label || extra.name) + " — khác");
+              }
+            }
+          }
+          return out;
+        })();
+
+
             // ────────────────────────── TIỆN ÍCH ──────────────────────────
             const el = (tag, attrs = {}, ...kids) => {
                 const node = document.createElement(tag);

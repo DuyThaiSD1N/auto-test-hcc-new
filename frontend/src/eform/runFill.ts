@@ -17,6 +17,28 @@ export interface FillResult {
 
 interface EngineWindow extends Window {
   __HCC__?: { fillForm?: (fields: unknown[]) => Promise<FillResult> }
+  /** Danh sách ô của biểu mẫu, do chính file eForm công bố (xem public/eform/*.html) */
+  __HCC_FORM_FIELDS__?: FormField[]
+}
+
+/** Một ô trên biểu mẫu — kể cả ô pipeline không trả dữ liệu */
+export interface FormField {
+  name: string
+  comp: string
+  label: string | null
+  section: string | null
+}
+
+/**
+ * Đọc danh sách ô của biểu mẫu đang mở trong iframe.
+ *
+ * Form nào chưa công bố `__HCC_FORM_FIELDS__` thì trả mảng rỗng — lúc đó giao diện
+ * lùi về cách cũ: chỉ hiện những trường pipeline trả về.
+ */
+export function readFormFields(frame: HTMLIFrameElement | null): FormField[] {
+  const win = frame?.contentWindow as EngineWindow | null | undefined
+  const list = win?.__HCC_FORM_FIELDS__
+  return Array.isArray(list) ? list.filter((f) => f && typeof f.name === 'string') : []
 }
 
 function injectScript(doc: Document, src: string): Promise<void> {
