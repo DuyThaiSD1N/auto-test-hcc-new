@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { BatchField, HistoryJobDetail, ItemOcr, Procedure } from '../api/types'
+import type { BatchField, ItemOcr, Procedure } from '../api/types'
 import { ISSUE_LABEL } from '../api/types'
 import { eformUrl } from '../eform/registry'
 import AppLayout from '../components/AppLayout'
@@ -9,7 +9,7 @@ import { fillEform, readFormFields } from '../eform/runFill'
 import type { FillResult, FormField } from '../eform/runFill'
 import { useAuth } from '../auth/AuthContext'
 
-type View = 'eform' | 'json' | 'phien'
+type View = 'eform' | 'json'
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -150,21 +150,6 @@ function readOcr(raw: unknown): OcrView {
   }
 }
 
-function formatTime(value: string | null | undefined): string {
-  if (!value) return '—'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('vi-VN')
-}
-
-/** Khoảng thời gian giữa hai mốc, dạng người đọc được */
-function duration(from: string | null | undefined, to: string | null | undefined): string | null {
-  if (!from || !to) return null
-  const msec = new Date(to).getTime() - new Date(from).getTime()
-  if (Number.isNaN(msec) || msec < 0) return null
-  if (msec < 60_000) return `${(msec / 1000).toFixed(1).replace('.', ',')} giây`
-  return `${Math.floor(msec / 60_000)} phút ${Math.round((msec % 60_000) / 1000)} giây`
-}
-
 /** "12 ms" / "5,0 giây" - stats của pipeline tính bằng mili giây */
 function ms(value: unknown): string | null {
   if (typeof value !== 'number' || Number.isNaN(value)) return null
@@ -187,7 +172,7 @@ export default function EformPage() {
   // Không có eForm dựng sẵn thì cũng vào thẳng tab JSON (đỡ hiện tab Form trống).
   const [view, setView] = useState<View>(() => {
     const wanted = params.get('view')
-    if (wanted === 'json' || wanted === 'phien') return wanted
+    if (wanted === 'json') return wanted
     return eformUrl(key) ? 'eform' : 'json'
   })
   const [dirty, setDirty] = useState(false)
@@ -537,12 +522,6 @@ export default function EformPage() {
           >
             JSON bóc tách
           </button>
-          <button
-            className={`chip${view === 'phien' ? ' active' : ''}`}
-            onClick={() => setView('phien')}
-          >
-            Tổng hợp phiên
-          </button>
         </span>
         {labeled && <span className="badge-labeled">● Đã gán nhãn</span>}
       </div>
@@ -564,7 +543,7 @@ export default function EformPage() {
       ) : (
         <div className={`eform-split${view === 'json' && jsonFull ? ' json-full' : ''}`}>
           <div className="doc-pane">
-            {/* Cả ba khối luôn nằm trong DOM, chỉ ẩn/hiện. Nhờ vậy quay lại tab
+            {/* Cả hai khối luôn nằm trong DOM, chỉ ẩn/hiện. Nhờ vậy quay lại tab
                 "Form đã điền" là thấy nguyên form đã điền, không phải điền lại từ đầu. */}
             <div className="pane-slot" hidden={view !== 'eform'}>
               <>
@@ -699,14 +678,6 @@ export default function EformPage() {
                   </section>
                 </div>
               </>
-            </div>
-
-            <div className="pane-slot" hidden={view !== 'phien'}>
-              <SessionSummary
-                itemId={itemId}
-                active={view === 'phien'}
-                onOpen={(next) => navigate(`/thu-tuc/${key}/eform?item=${next}`)}
-              />
             </div>
           </div>
 
@@ -905,149 +876,5 @@ export default function EformPage() {
         </div>
       )}
     </AppLayout>
-  )
-}
-
-const LABEL_STATUS: Record<string, string> = {
-  draft: 'Đang sửa',
-  error: 'Lỗi',
-  done: 'Hoàn thiện',
-}
-
-/**
- * Tab "Tổng hợp phiên": toàn bộ hồ sơ của phiên quét chứa hồ sơ đang mở —
- * chạy ra sao, hồ sơ nào đã gán nhãn, và nhảy thẳng sang hồ sơ khác mà không
- * phải quay về danh sách.
- */
-function SessionSummary({
-  itemId,
-  active,
-  onOpen,
-}: {
-  itemId: string | null
-  active: boolean
-  onOpen: (itemId: string) => void
-}) {
-  const [job, setJob] = useState<HistoryJobDetail | null>(null)
-  const [state, setState] = useState<'cho' | 'dang-tai' | 'xong' | 'khong-co'>('cho')
-
-  useEffect(() => {
-    setJob(null)
-    setState('cho')
-  }, [itemId])
-
-  useEffect(() => {
-    if (!active || !itemId || state !== 'cho') return
-    setState('dang-tai')
-    ;(async () => {
-      try {
-        const res = await api.historyResult(itemId)
-        if (!res.jobId) {
-          setState('khong-co')
-          return
-        }
-        setJob(await api.historyJob(res.jobId))
-        setState('xong')
-      } catch {
-        setState('khong-co')
-      }
-    })()
-  }, [active, itemId, state])
-
-  if (state === 'dang-tai' || state === 'cho') {
-    return <div className="session-pane muted-small">Đang tải phiên quét…</div>
-  }
-  if (state === 'khong-co' || !job) {
-    return (
-      <div className="session-pane">
-        <div className="empty">
-          Hồ sơ này không gắn với phiên quét nào còn trong lịch sử (phiên có thể đã bị xóa).
-        </div>
-      </div>
-    )
-  }
-
-  const took = duration(job.startedAt, job.finishedAt)
-
-  return (
-    <div className="session-pane">
-      <div className="session-head">
-        <div>
-          <strong>{job.name || job.jobId}</strong>
-          <span className="muted-small mono"> · {job.testCode || job.jobId}</span>
-        </div>
-        <span className={`status-pill s-${job.status}`}>{job.status}</span>
-      </div>
-
-      <div className="fact-grid">
-        <div>
-          <dt>Kết quả</dt>
-          <dd>
-            {job.counts?.done ?? 0} xong · {job.counts?.failed ?? 0} lỗi /{' '}
-            {job.counts?.total ?? 0} hồ sơ
-          </dd>
-        </div>
-        <div>
-          <dt>Bắt đầu</dt>
-          <dd>{formatTime(job.startedAt)}</dd>
-        </div>
-        <div>
-          <dt>Kết thúc</dt>
-          <dd>
-            {formatTime(job.finishedAt)}
-            {took && <span className="muted-small"> (chạy {took})</span>}
-          </dd>
-        </div>
-        <div>
-          <dt>Nguồn bóc tách</dt>
-          <dd>{job.provider === 'internal' ? 'BE nội bộ' : 'API theo lô'}</dd>
-        </div>
-      </div>
-
-      <div className="table-scroll" style={{ marginTop: 14 }}>
-        <table className="dossier-table">
-          <thead>
-            <tr>
-              <th>Mã hồ sơ</th>
-              <th>Trạng thái</th>
-              <th>Trường</th>
-              <th>Nhãn</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {job.items.map((it) => (
-              <tr key={it.itemId} className={it.itemId === itemId ? 'row-open' : ''}>
-                <td>
-                  {it.clientDossierId}
-                  {it.itemId === itemId && <span className="tag-default">đang mở</span>}
-                </td>
-                <td>
-                  <span className={`status-pill s-${it.status}`}>{it.status}</span>
-                  {it.error && <div className="muted-small error-text">{it.error}</div>}
-                </td>
-                <td>{it.resultFieldCount ?? 0}</td>
-                <td>
-                  {it.labelStatus ? (
-                    <span className={`status-pill s-${it.labelStatus}`}>
-                      {LABEL_STATUS[it.labelStatus] ?? it.labelStatus}
-                    </span>
-                  ) : (
-                    <span className="muted-small">chưa gán</span>
-                  )}
-                </td>
-                <td className="row-actions">
-                  {it.hasResult && it.itemId !== itemId && (
-                    <button className="ghost-btn" onClick={() => onOpen(it.itemId)}>
-                      Mở hồ sơ này
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
   )
 }

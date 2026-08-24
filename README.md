@@ -523,6 +523,22 @@ Chưa cấu hình (hoặc tài khoản không phải admin) thì khung OCR **nó
 và vẫn hiện dữ liệu thô của bước quét. Nếu sau này BE trả thẳng `pages[]`/`ocrText`/`extracted.text`
 trong kết quả, khung đó tự hiện văn bản mà không cần tài khoản admin.
 
+**Chạy bằng API theo lô (`APP_EXTRACT_PROVIDER=batch`)** thì không có trace để hỏi — batch của BE
+"tách biệt khỏi trace vận hành". Nhưng worker batch OCR qua cùng dịch vụ và cất kết quả vào
+collection **`ocr_cache`** trong Mongo của BE (khóa `v2-tiengnoi:<sha256 file>`, **TTL 12 giờ**),
+còn API batch trả `files[].sha256` trong `GET /items/{id}/result`. Backend này tra cache theo hash đó:
+
+```
+GET /api/batch/items/{itemId}/ocr   (provider = batch)
+  → GET /api/v1/batch/items/{id}/result → files[].sha256
+  → tìm trong `ocr_cache` của BE (APP_OCR_CACHE_MONGO_URI)
+  → ghép OCR từng file, LƯU vào Mongo app (collection `ocr_texts`) rồi trả về
+```
+
+Mỗi lần lấy trang kết quả (`/results`) backend cũng cắt OCR về `ocr_texts` chạy nền, nên hồ sơ
+mở lại sau 12 giờ vẫn còn OCR. Cấu hình (xem `.env.example`): `APP_OCR_CACHE_MONGO_URI` trỏ tới
+Mongo của BE và `APP_OCR_CACHE_DB` (mặc định `autofill_hcc`).
+
 Hồ sơ đã đánh dấu **hoàn thiện** thì khung lưu chỉ báo *"✓ Đã lưu & hoàn thiện"* kèm ai lưu
 lúc nào — nút lưu chỉ hiện lại khi thực sự sửa một trường nào đó.
 

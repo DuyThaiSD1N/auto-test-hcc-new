@@ -4,6 +4,7 @@ Ba collection:
     jobs     - mot phien quet (ten, thu tuc, nguon boc tach, trang thai, so luong)
     items    - tung ho so trong phien (ma ho so, danh sach file, trang thai, loi)
     results  - JSON boc tach cua tung ho so (chinh la thu can luu lai de doi chieu)
+    ocr_texts - van ban OCR cua ho so batch, cat lai tu ocr_cache cua BE (xem ocr_cache.py)
 
 Moi ham deu tu bo qua khi chua bat Mongo, nen phan goi khong can kiem tra truoc.
 """
@@ -116,8 +117,12 @@ async def save_result(
     procedure: str | None,
     client_dossier_id: str | None,
     result: dict | None,
+    files: list[dict] | None = None,
 ) -> None:
     """Luu JSON boc tach. Goi lai nhieu lan cung khong tao ban ghi trung.
+
+    `files` = mo ta file kem sha256 ma API batch tra ve - can de tra OCR sau nay
+    (chi luu ten/kieu/kich thuoc/hash, khong luu noi dung).
 
     Chi ghi de jobId/procedure/clientDossierId khi lan goi nay BIET gia tri.
     Ly do: mot so nguon tra ket qua khong kem jobId (vd `/api/batch/items/{id}/result`
@@ -129,6 +134,10 @@ async def save_result(
         return
     fields = result.get("fields") or []
     changes: dict[str, Any] = {"fieldCount": len(fields), "result": result, "savedAt": _now()}
+    if files:
+        changes["files"] = [
+            {k: f.get(k) for k in ("name", "type", "role", "size", "sha256")} for f in files
+        ]
     for key, value in (
         ("jobId", job_id),
         ("procedure", procedure),
@@ -160,6 +169,7 @@ async def save_results_page(job_id: str | None, results: list[dict], procedure: 
             entry.get("procedure") or procedure,
             entry.get("clientDossierId"),
             entry.get("result"),
+            entry.get("files"),
         )
 
 
@@ -234,6 +244,7 @@ async def delete_job(job_id: str) -> dict:
     if item_ids:
         labels = (await db.labels.delete_many({"itemId": {"$in": list(item_ids)}})).deleted_count
         await db.results.delete_many({"itemId": {"$in": list(item_ids)}})
+        await db.ocr_texts.delete_many({"itemId": {"$in": list(item_ids)}})
     await db.results.delete_many({"jobId": job_id})
     await db.items.delete_many({"jobId": job_id})
     res = await db.jobs.delete_one({"jobId": job_id})

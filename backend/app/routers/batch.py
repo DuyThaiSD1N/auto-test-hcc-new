@@ -4,6 +4,7 @@ Trinh duyet goi cac endpoint /api/batch/* (xac thuc bang JWT dang nhap);
 server dinh kem secret rieng roi goi sang Auto Fill HCC.
 """
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
-from .. import history, pool
+from .. import history, ocr_cache, pool
 from ..batch_client import BatchApiError
 from ..extraction import ExtractionBackend, get_backend
 from ..config import get_settings
@@ -148,6 +149,15 @@ async def list_results(
     results = data.get("results") or data.get("items") or []
     if isinstance(results, list):
         await history.save_results_page(job_id, results, None)
+        # Cache OCR cua BE chi song 12 gio: cat lai ngay khi co ket qua, chay nen
+        # de khong lam cham trang danh sach.
+        pending = [
+            (r["itemId"], r.get("files"))
+            for r in results
+            if r.get("itemId") and r.get("files") and r.get("status", "done") == "done"
+        ]
+        if pending:
+            asyncio.create_task(ocr_cache.capture_many(pending))
     return data
 
 
@@ -251,7 +261,12 @@ async def item_result(item_id: str, client: Client, _: ScanUser) -> dict:
         raise _handle(exc) from exc
 
     await history.save_result(
-        item_id, data.get("jobId"), data.get("procedure"), data.get("clientDossierId"), data.get("result")
+        item_id,
+        data.get("jobId"),
+        data.get("procedure"),
+        data.get("clientDossierId"),
+        data.get("result"),
+        data.get("files"),
     )
     return data
 
@@ -312,34 +327,26 @@ async def upload_item_from_pool(
 async def item_ocr(item_id: str, client: Client, _: ScanUser) -> dict:
     """Van ban OCR ma nguon boc tach doc duoc tu file cua ho so nay.
 
-    Ket qua cua /api/v1/process khong kem OCR; BE noi bo luu no trong "trace" cua request
-    va chi cho tai khoan admin doc. Vi vay o day lay requestId tu ket qua roi hoi trace.
+    Hai duong tuy nguon boc tach:
+    - BE noi bo: ket qua /api/v1/process khong kem OCR; BE luu no trong "trace" cua request
+      va chi cho tai khoan admin doc -> lay requestId tu ket qua roi hoi /api/v1/traces.
+    - API theo lo: khong co trace; worker cat OCR vao `ocr_cache` cua BE theo sha256 file
+      -> lay sha256 tu ket qua item roi tra cache (xem ocr_cache.py), luu lai vao Mongo app.
     Luon tra 200 kem ly do neu khong lay duoc - giao dien hien ly do thay vi bao loi do.
     """
-    request_id = None
+    data: dict = {}
     try:
         data = await client.item_result(item_id)
-        result = data.get("result") or {}
-        request_id = result.get("requestId") or result.get("sessionId")
     except BatchApiError:
-        request_id = None
+        data = {}
+    saved = await history.get_result(item_id)
 
-    if not request_id:
-        saved = await history.get_result(item_id)
-        result = (saved or {}).get("result") or {}
-        request_id = result.get("requestId") or result.get("sessionId")
-
-    # Van ban OCR chi doc duoc qua /api/v1/traces cua BE noi bo. Chay nguon "batch"
-    # (API theo lo) thi khong co duong nao lay - noi thang thay vi bao loi mo ho.
     if not get_settings().use_internal_backend:
-        return {
-            "available": False,
-            "reason": (
-                "Nguon boc tach dang la API theo lo - API do khong tra ve van ban OCR. "
-                "Chi xem duoc OCR khi chay bang BE noi bo (APP_EXTRACT_PROVIDER=internal)."
-            ),
-        }
+        files = data.get("files") or (saved or {}).get("files")
+        return await ocr_cache.fetch_for_item(item_id, files)
 
+    result = data.get("result") or (saved or {}).get("result") or {}
+    request_id = result.get("requestId") or result.get("sessionId")
     return await InternalTraceClient().fetch_ocr(str(request_id or ""))
 
 

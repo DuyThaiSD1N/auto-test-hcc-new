@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db
+from . import db, ocr_cache
 from .config import get_settings
 from .routers import auth, batch, history, pool, procedures, users
 
@@ -30,6 +30,7 @@ async def lifespan(_: FastAPI):
     await db.connect()
     yield
     await db.disconnect()
+    await ocr_cache.close()
 
 
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
