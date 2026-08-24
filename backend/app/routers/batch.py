@@ -329,6 +329,17 @@ async def item_ocr(item_id: str, client: Client, _: ScanUser) -> dict:
         result = (saved or {}).get("result") or {}
         request_id = result.get("requestId") or result.get("sessionId")
 
+    # Van ban OCR chi doc duoc qua /api/v1/traces cua BE noi bo. Chay nguon "batch"
+    # (API theo lo) thi khong co duong nao lay - noi thang thay vi bao loi mo ho.
+    if not get_settings().use_internal_backend:
+        return {
+            "available": False,
+            "reason": (
+                "Nguon boc tach dang la API theo lo - API do khong tra ve van ban OCR. "
+                "Chi xem duoc OCR khi chay bang BE noi bo (APP_EXTRACT_PROVIDER=internal)."
+            ),
+        }
+
     return await InternalTraceClient().fetch_ocr(str(request_id or ""))
 
 

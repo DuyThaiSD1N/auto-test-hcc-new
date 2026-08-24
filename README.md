@@ -579,6 +579,18 @@ sửa `APP_DEFAULT_PASSWORD` trong `backend/.env` rồi khởi động lại bac
 Khi build production, **FastAPI phục vụ luôn giao diện** (`frontend/dist`) trên cùng một cổng,
 nên chỉ cần mở 1 port, không phải cấu hình CORS, không lo lệch domain giữa FE và BE.
 
+### Chọn nguồn bóc tách khi deploy
+
+| | BE nội bộ (`internal`) | API theo lô (`batch`) |
+|---|---|---|
+| Cấu hình | `APP_INTERNAL_*` | `APP_BATCH_API_BASE_URL` + `APP_BATCH_API_SECRET` |
+| Máy chủ cần | thấy được BE nội bộ (LAN/VPN) | chỉ cần ra Internet |
+| Xem văn bản OCR | ✅ (qua `/api/v1/traces`, cần tài khoản admin BE) | ❌ API theo lô không trả OCR |
+| Hàng đợi | backend này tự xếp trong bộ nhớ | phía Auto Fill HCC lo |
+
+Deploy lên máy chủ ngoài thì `batch` gọn hơn nhiều — không phải mở đường tới BE nội bộ.
+Đổi lại mất tab OCR; khung OCR sẽ nói rõ lý do chứ không báo lỗi mơ hồ.
+
 ### Cách 1 — Docker (khuyến nghị)
 
 ```bash
