@@ -9,7 +9,7 @@ import { fillEform, readFormFields } from '../eform/runFill'
 import type { FillResult, FormField } from '../eform/runFill'
 import { useAuth } from '../auth/AuthContext'
 
-type View = 'eform' | 'json' | 'phien'
+type View = '3pane' | 'eform' | 'json' | 'phien'
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -100,11 +100,6 @@ function firstString(values: unknown[]): string | null {
 
 /**
  * Rút phần "bản quét đọc ra được gì" từ kết quả bóc tách.
- *
- * Mỗi pipeline trả một kiểu: có nơi để văn bản OCR ở `pages[]`, có nơi gộp vào
- * `ocrText`/`extracted.text`, pipeline `trich_luc` hiện chỉ trả `extracted` (dữ liệu
- * thô) và `stats` (thời gian OCR/LLM). Đọc rộng tay để nguồn nào cũng hiện được,
- * và không có gì thì nói thẳng là không có chứ không hiện khung trống.
  */
 function readOcr(raw: unknown): OcrView {
   const r = isObject(raw) ? raw : {}
@@ -183,12 +178,10 @@ export default function EformPage() {
   const [rawResult, setRawResult] = useState<unknown>(null)
   const [labeled, setLabeled] = useState(false)
   const [labeledInfo, setLabeledInfo] = useState<string | null>(null)
-  // Mở thẳng một tab qua URL (?view=json) — tiện gửi link cho nhau xem JSON.
-  // Không có eForm dựng sẵn thì cũng vào thẳng tab JSON (đỡ hiện tab Form trống).
   const [view, setView] = useState<View>(() => {
     const wanted = params.get('view')
-    if (wanted === 'json' || wanted === 'phien') return wanted
-    return eformUrl(key) ? 'eform' : 'json'
+    if (wanted === 'json' || wanted === 'phien' || wanted === 'eform' || wanted === '3pane') return wanted
+    return eformUrl(key) ? '3pane' : 'json'
   })
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -199,25 +192,18 @@ export default function EformPage() {
   const [frameReady, setFrameReady] = useState(false)
   const [frameEpoch, setFrameEpoch] = useState(0)
   const [status, setStatus] = useState<'pending' | 'draft' | 'error' | 'done'>('pending')
-  // Nhận xét + loại lỗi của hồ sơ (chỉ có nghĩa khi lưu ở trạng thái "lỗi")
   const [note, setNote] = useState('')
   const [issues, setIssues] = useState<string[]>([])
-  // Tab JSON: mặc định chia đôi màn hình như tab Form, bấm mở rộng thì chiếm hết bề ngang
   const [jsonFull, setJsonFull] = useState(false)
   const [copied, setCopied] = useState(false)
   const [copiedOcr, setCopiedOcr] = useState(false)
-  // Khối nào đang chiếm hết chiều cao: cả hai / chỉ OCR / chỉ JSON
   const [stack, setStack] = useState<'ca-hai' | 'ocr' | 'json'>('ca-hai')
   const [autoSaveMsg, setAutoSaveMsg] = useState<string | null>(null)
-  // Toàn bộ ô của biểu mẫu (kể cả ô pipeline không trả) — đọc từ chính eForm
   const [formFields, setFormFields] = useState<FormField[]>([])
 
-  // Phần OCR của tab JSON, đọc lại mỗi khi có kết quả mới
   const ocr = useMemo(() => readOcr(rawResult), [rawResult])
-  // Mọi ô của form + dữ liệu tương ứng (ô chưa có dữ liệu -> null)
   const rows = useMemo(() => mergeRows(formFields, fields), [formFields, fields])
   const filledCount = rows.filter((r) => r.index >= 0).length
-  // Kết quả bóc tách không kèm văn bản OCR -> hỏi thêm backend (nó đọc trace của nguồn bóc tách)
   const [ocrRemote, setOcrRemote] = useState<ItemOcr | 'dang-tai' | null>(null)
   const hasOcrText =
     ocr.pages.length > 0 ||
@@ -230,11 +216,87 @@ export default function EformPage() {
   const loadedItem = useRef<string | null>(null)
   const eform = eformUrl(key)
 
+  // Cờ chặn phản hồi vòng lặp khi tự điền eform
+  const isFillingRef = useRef(false)
+
+  // Lắng nghe sự kiện gõ trực tiếp trong eform iframe để ĐỒNG BỘ 2 CHIỀU sang cột Dữ liệu bóc tách
+  const setupIframeListener = useCallback(() => {
+    const frame = frameRef.current
+    if (!frame) return
+    const doc = frame.contentDocument
+    if (!doc) return
+
+    const handleFrameInputChange = (e: Event) => {
+      if (isFillingRef.current) return
+      const target = e.target as HTMLElement | null
+      if (!target) return
+
+      const inputEl = target.closest('input, select, textarea') as HTMLInputElement | HTMLSelectElement | null
+      let name = inputEl?.name || inputEl?.id || ''
+      if (!name) {
+        const container = target.closest(
+          'x-input, x-input-number, x-date, x-date-text, x-select, x-select-default, x-radio, x-select-area',
+        )
+        if (container) {
+          name = container.getAttribute('name') || ''
+        }
+      }
+      if (!name) return
+
+      const cleanName = name.replace(/-(day|month|year|name-date-input)$/, '')
+      let val: string | Record<string, unknown> = ''
+
+      const dInput = doc.querySelector<HTMLInputElement>(`input[name="${cleanName}-day"], input[id="${cleanName}-day"]`)
+      const mInput = doc.querySelector<HTMLInputElement>(`input[name="${cleanName}-month"], input[id="${cleanName}-month"]`)
+      const yInput = doc.querySelector<HTMLInputElement>(`input[name="${cleanName}-year"], input[id="${cleanName}-year"]`)
+
+      if (dInput || mInput || yInput) {
+        const d = dInput?.value.padStart(2, '0') || ''
+        const m = mInput?.value.padStart(2, '0') || ''
+        const y = yInput?.value || ''
+        if (d || m || y) val = `${d}/${m}/${y}`
+      } else {
+        const areaEl = doc.querySelector(`x-select-area[name="${cleanName}"]`)
+        if (areaEl) {
+          const areaObj: Record<string, string> = {}
+          areaEl.querySelectorAll('select, input').forEach((s) => {
+            const el = s as HTMLInputElement | HTMLSelectElement
+            const n = el.name || el.id || ''
+            if (n.includes('quocGia') || n.includes('QuocGia')) areaObj.quocGia = el.value
+            else if (n.includes('tinh') || n.includes('Tinh')) areaObj.tinh = el.value
+            else if (n.includes('xa') || n.includes('Xa')) areaObj.xa = el.value
+            else if (n.includes('diaChi') || n.includes('DiaChi')) areaObj.diaChi = el.value
+          })
+          val = areaObj
+        } else if (inputEl) {
+          val = inputEl.value
+        }
+      }
+
+      setFields((prev) => {
+        const idx = prev.findIndex((f) => f.name === cleanName)
+        if (idx >= 0) {
+          if (JSON.stringify(prev[idx].value) === JSON.stringify(val)) return prev
+          const next = [...prev]
+          next[idx] = { ...next[idx], value: val }
+          return next
+        } else {
+          return [...prev, { name: cleanName, comp: 'x-input', value: val }]
+        }
+      })
+      setDirty(true)
+    }
+
+    doc.removeEventListener('input', handleFrameInputChange)
+    doc.removeEventListener('change', handleFrameInputChange)
+    doc.addEventListener('input', handleFrameInputChange)
+    doc.addEventListener('change', handleFrameInputChange)
+  }, [])
+
   useEffect(() => {
     api.procedure(key).then(setProcedure).catch(() => setProcedure(null))
   }, [key])
 
-  // Nạp trường: ưu tiên nhãn đã lưu; JSON bóc tách thô luôn lấy từ kết quả để đối chiếu
   useEffect(() => {
     if (!itemId) return
     let cancelled = false
@@ -247,7 +309,6 @@ export default function EformPage() {
           baseFields = res.result?.fields ?? []
         }
       } catch {
-        // Kết quả có thể đã bị xóa khỏi nguồn; vẫn thử lấy bản lưu trong CSDL
         try {
           const hist = await api.historyResult(itemId)
           if (!cancelled) {
@@ -282,16 +343,10 @@ export default function EformPage() {
     }
   }, [itemId])
 
-  // Luôn giữ fieldsRef = fields mới nhất (dùng cho tự điền và tự lưu)
   useEffect(() => {
     fieldsRef.current = fields
   }, [fields])
 
-  // Tự lưu tiến trình: sau khi sửa 1.2s không thao tác thì lưu nháp, không mất khi
-  // chuyển tab hay mở lại từ lịch sử. Giữ nguyên trạng thái "done" nếu đã hoàn thiện.
-  //
-  // KHÔNG tự lưu khi hồ sơ đang là "lỗi": sửa một hồ sơ lỗi là đang chữa nó, phải tự
-  // bấm nút để chốt xem chữa xong (hoàn thiện) hay vẫn còn lỗi.
   useEffect(() => {
     if (!dirty || !itemId || fields.length === 0 || status === 'error') return
     const t = setTimeout(async () => {
@@ -310,7 +365,7 @@ export default function EformPage() {
         setDirty(false)
         setAutoSaveMsg(`Đã lưu tiến trình lúc ${new Date().toLocaleTimeString('vi-VN')}`)
       } catch {
-        /* lưu tự động thất bại thì thôi, người dùng vẫn bấm Lưu tay được */
+        /* lưu tự động thất bại */
       }
     }, 1200)
     return () => clearTimeout(t)
@@ -322,7 +377,7 @@ export default function EformPage() {
 
   useEffect(() => {
     if (view !== 'json' || !itemId || ocrRemote) return
-    if (ocr.pages.length > 0 || ocr.text) return // kết quả đã kèm sẵn văn bản OCR
+    if (ocr.pages.length > 0 || ocr.text) return
     setOcrRemote('dang-tai')
     api
       .itemOcr(itemId)
@@ -335,37 +390,25 @@ export default function EformPage() {
       )
   }, [view, itemId, ocr, ocrRemote])
 
-  // Biểu mẫu vừa dựng xong: lấy danh sách ô để cột bên phải hiện được cả ô còn trống
   useEffect(() => {
     if (!frameReady) return
     setFormFields(readFormFields(frameRef.current))
-  }, [frameReady, frameEpoch])
+    setupIframeListener()
+  }, [frameReady, frameEpoch, setupIframeListener])
 
-  // Biểu mẫu vừa dựng xong: lấy danh sách ô để cột bên phải hiện được cả ô còn trống
   useEffect(() => {
-    if (!frameReady) return
-    setFormFields(readFormFields(frameRef.current))
-  }, [frameReady, frameEpoch])
-
-  // Tự điền eForm khi mở (sau khi có dữ liệu) — "form đã điền những gì"
-  useEffect(() => {
-    if (view !== 'eform' || !frameReady || fields.length === 0) return
-    // Điền lại khi: frame vừa nạp lại (frameEpoch), hoặc dữ liệu thay đổi.
-    // Nhờ vậy chuyển sang JSON rồi quay lại eForm, form không bị trống.
+    if ((view !== 'eform' && view !== '3pane') || !frameReady || fields.length === 0) return
     const sig = `${frameEpoch}:${JSON.stringify(fields)}`
     if (lastFilled.current === sig) return
     lastFilled.current = sig
     void handleFill()
   }, [view, frameReady, frameEpoch, fields])
 
-  // ------------------------------------------------------------ sửa trường
-
   const setStringValue = useCallback((index: number, value: string) => {
     setFields((prev) => prev.map((f, i) => (i === index ? { ...f, value } : f)))
     setDirty(true)
   }, [])
 
-  /** Gõ vào một ô form chưa có dữ liệu -> thêm hẳn trường đó vào nhãn */
   const addFieldValue = useCallback((row: Row, value: BatchField['value']) => {
     setFields((prev) => [...prev, { name: row.name, comp: row.comp, value }])
     setDirty(true)
@@ -382,7 +425,6 @@ export default function EformPage() {
     setDirty(true)
   }, [])
 
-  // Quay lại danh sách hồ sơ, lưu tiến trình trước khi rời (phòng khi tự-lưu 1.2s chưa chạy)
   const [goingBack, setGoingBack] = useState(false)
   async function backToList() {
     setGoingBack(true)
@@ -398,7 +440,7 @@ export default function EformPage() {
         })
       }
     } catch {
-      /* lưu lỗi vẫn cho quay lại; auto-save/nút lưu tay vẫn còn */
+      /* lưu lỗi vẫn cho quay lại */
     } finally {
       navigate(`/thu-tuc/${key}/nhan`)
     }
@@ -418,7 +460,6 @@ export default function EformPage() {
     setSaveMsg(null)
     setError(null)
     try {
-      // Hồ sơ hoàn thiện thì bỏ hết tag lỗi — đã sửa xong nên tag không còn đúng nữa
       const keptIssues = next === 'done' ? [] : issues
       await api.saveLabel(itemId, {
         fields,
@@ -450,7 +491,6 @@ export default function EformPage() {
     }
   }
 
-  /** Bỏ nhãn (chỉ admin): quay về đúng dữ liệu bóc tách gốc để gán lại từ đầu. */
   async function removeLabel() {
     if (!itemId) return
     setError(null)
@@ -499,12 +539,16 @@ export default function EformPage() {
   async function handleFill() {
     setError(null)
     setFilling(true)
+    isFillingRef.current = true
     try {
       setFillResult(await fillEform(frameRef.current, fields))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không điền được biểu mẫu')
     } finally {
       setFilling(false)
+      setTimeout(() => {
+        isFillingRef.current = false
+      }, 150)
     }
   }
 
@@ -524,6 +568,13 @@ export default function EformPage() {
           {goingBack ? 'Đang lưu…' : '← Danh sách hồ sơ'}
         </button>
         <span className="view-switch">
+          <button
+            className={`chip${view === '3pane' ? ' active' : ''}`}
+            onClick={() => setView('3pane')}
+            disabled={!eform}
+          >
+            3 Màn (Đồng bộ)
+          </button>
           <button
             className={`chip${view === 'eform' ? ' active' : ''}`}
             onClick={() => setView('eform')}
@@ -562,43 +613,102 @@ export default function EformPage() {
           của thủ tục).
         </div>
       ) : (
-        <div className={`eform-split${view === 'json' && jsonFull ? ' json-full' : ''}`}>
-          <div className="doc-pane">
-            {/* Cả ba khối luôn nằm trong DOM, chỉ ẩn/hiện. Nhờ vậy quay lại tab
-                "Form đã điền" là thấy nguyên form đã điền, không phải điền lại từ đầu. */}
-            <div className="pane-slot" hidden={view !== 'eform'}>
-              <>
+        <div
+          className={`eform-split${view === '3pane' ? ' three-panes' : ''}${
+            view === 'json' && jsonFull ? ' json-full' : ''
+          }`}
+        >
+          {/* MÀN 1: Form eForm tương tác (bên ngoài bên trái) */}
+          <div
+            className="doc-pane pane-eform"
+            hidden={view !== '3pane' && view !== 'eform'}
+          >
+            <div className="doc-tabs">
+              <button className="primary-btn inline" onClick={handleFill} disabled={filling}>
+                {filling ? 'Đang điền…' : 'Điền lại theo dữ liệu'}
+              </button>
+              {fillResult && (
+                <span className="muted-small">
+                  Đã điền {fillResult.filled}/{fields.length}
+                </span>
+              )}
+            </div>
+            {eform ? (
+              <iframe
+                ref={frameRef}
+                className="doc-frame"
+                src={`${eform}?embed=1`}
+                title="eForm"
+                onLoad={() => {
+                  setFrameReady(true)
+                  setFrameEpoch((n) => n + 1)
+                  setupIframeListener()
+                }}
+              />
+            ) : (
+              <div className="empty">Thủ tục này chưa có eForm dựng sẵn.</div>
+            )}
+          </div>
+
+          {/* MÀN 2: Hiển thị văn bản / ảnh file bóc tách (ở giữa) */}
+          <div
+            className="doc-pane pane-ocr-file"
+            hidden={view !== '3pane' && view !== 'json'}
+          >
+            {view === '3pane' ? (
+              <div className="doc-ocr-pane">
                 <div className="doc-tabs">
-                  <button className="primary-btn inline" onClick={handleFill} disabled={filling}>
-                    {filling ? 'Đang điền…' : 'Điền lại theo dữ liệu hiện tại'}
-                  </button>
-                  {fillResult && (
-                    <span className="muted-small">
-                      Đã điền {fillResult.filled}/{fields.length}
-                      {fillResult.notFound.length
-                        ? ` · thiếu: ${fillResult.notFound.join(', ')}`
-                        : ''}
-                    </span>
+                  <strong>Hiển thị ảnh / Văn bản file bóc tách</strong>
+                  {hasOcrText && (
+                    <button className="ghost-btn" onClick={copyOcr}>
+                      {copiedOcr ? 'Đã chép ✓' : 'Chép OCR'}
+                    </button>
                   )}
                 </div>
-                {eform ? (
-                  <iframe
-                    ref={frameRef}
-                    className="doc-frame"
-                    src={`${eform}?embed=1`}
-                    title="eForm"
-                    onLoad={() => {
-              setFrameReady(true)
-              setFrameEpoch((n) => n + 1)
-            }}
-                  />
-                ) : (
-                  <div className="empty">Thủ tục này chưa có eForm dựng sẵn.</div>
-                )}
-              </>
-            </div>
-
-            <div className="pane-slot" hidden={view !== 'json'}>
+                <div className="doc-ocr-body">
+                  {ocr.pages.length > 0 ? (
+                    <div className="paper-doc">
+                      {ocr.pages.map((p, idx) => (
+                        <div className="paper-page" key={idx}>
+                          <div className="paper-page-head">📄 {p.label}</div>
+                          <pre className="paper-text">{p.text}</pre>
+                        </div>
+                      ))}
+                    </div>
+                  ) : ocr.text ? (
+                    <div className="paper-doc">
+                      <div className="paper-page">
+                        <pre className="paper-text">{ocr.text}</pre>
+                      </div>
+                    </div>
+                  ) : ocrRemote === 'dang-tai' ? (
+                    <div className="doc-ocr-loading">Đang lấy văn bản bóc tách từ file…</div>
+                  ) : typeof ocrRemote === 'object' && ocrRemote?.available ? (
+                    <div className="paper-doc">
+                      <div className="paper-page">
+                        <pre className="paper-text">{ocrRemote.ocrText}</pre>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="paper-doc">
+                      <div className="paper-page">
+                        <div className="paper-page-head">📄 Dữ liệu bóc tách từ file</div>
+                        <pre className="paper-text">
+                          {JSON.stringify(
+                            fields.reduce(
+                              (acc, f) => ({ ...acc, [f.name]: f.value }),
+                              {},
+                            ),
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
               <>
                 <div className="doc-tabs">
                   <button className="ghost-btn" onClick={() => setJsonFull((v) => !v)}>
@@ -612,7 +722,6 @@ export default function EformPage() {
                   </span>
                 </div>
                 <div className={`json-stack${stack === 'ca-hai' ? '' : ` chi-${stack}`}`}>
-                  {/* Trên: bản quét đọc ra gì. Dưới: JSON đã bóc tách thành trường. */}
                   <section className="json-box ocr">
                     <header className="json-box-head">
                       <strong>OCR — bản quét đọc ra gì</strong>
@@ -699,18 +808,19 @@ export default function EformPage() {
                   </section>
                 </div>
               </>
-            </div>
-
-            <div className="pane-slot" hidden={view !== 'phien'}>
-              <SessionSummary
-                itemId={itemId}
-                active={view === 'phien'}
-                onOpen={(next) => navigate(`/thu-tuc/${key}/eform?item=${next}`)}
-              />
-            </div>
+            )}
           </div>
 
-          <aside className="label-pane">
+          <div className="pane-slot" hidden={view !== 'phien'}>
+            <SessionSummary
+              itemId={itemId}
+              active={view === 'phien'}
+              onOpen={(next) => navigate(`/thu-tuc/${key}/eform?item=${next}`)}
+            />
+          </div>
+
+          {/* MÀN 3: Dữ liệu bóc tách — sửa cho đúng (bên ngoài bên phải) */}
+          <aside className="label-pane" hidden={view === 'phien'}>
             <div className="label-head">
               <h3>Dữ liệu bóc tách — sửa cho đúng</h3>
               <span className="counter">

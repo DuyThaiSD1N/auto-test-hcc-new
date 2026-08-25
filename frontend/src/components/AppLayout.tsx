@@ -1,5 +1,5 @@
+import { useState, type ReactNode } from 'react'
 import { Link, NavLink } from 'react-router-dom'
-import type { ReactNode } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { homePath } from '../auth/home'
 import Logo from './Logo'
@@ -27,6 +27,18 @@ export default function AppLayout({
   const isAdmin = user?.role === 'admin'
   const isUploader = user?.role === 'uploader'
 
+  const [collapsed, setCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed') === 'true'
+  })
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev
+      localStorage.setItem('sidebar_collapsed', String(next))
+      return next
+    })
+  }
+
   const initials = (user?.full_name || user?.username || '?')
     .split(/\s+/)
     .slice(-2)
@@ -36,40 +48,55 @@ export default function AppLayout({
 
   return (
     <div className="shell">
-      <aside className="sidebar">
-        {/* Logo góc trái = lối về trang chủ (danh sách thủ tục), thay cho nút
-            "Chọn thủ tục khác" trước đây nằm rải rác trong từng trang */}
-        <Link to={homePath(user)} className="sidebar-brand" title="Về trang chủ">
+      <aside className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+        {/* Nút nhô ra ngoài viền thanh bên để kéo ẩn / hiện */}
+        <button
+          type="button"
+          className="sidebar-toggle-btn"
+          onClick={toggleCollapsed}
+          title={collapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+          aria-label={collapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+        >
+          <IconChevronLeft className={collapsed ? 'rotate-180' : ''} />
+        </button>
+
+        {/* Logo góc trái = lối về trang chủ */}
+        <Link
+          to={homePath(user)}
+          className="sidebar-brand"
+          title={collapsed ? 'Về trang chủ - Auto Test HCC' : 'Về trang chủ'}
+        >
           <div className="brand-mark">
             <Logo />
           </div>
-          <div>
+          <div className="sidebar-brand-text">
             <strong>Auto Test</strong>
             <span>Hành chính công</span>
           </div>
         </Link>
 
         <nav className="sidebar-nav">
-          {/* Tài khoản chuyên tải tài liệu chỉ có một việc: bỏ hồ sơ vào kho */}
           {!isUploader && (
             <>
               <div className="sidebar-section">Thử nghiệm</div>
-              <NavItem to="/thu-tuc" label="Thủ tục" icon={<IconList />} />
-              <NavItem to="/lich-su" label="Lịch sử" icon={<IconHistory />} />
+              <NavItem to="/thu-tuc" label="Thủ tục" icon={<IconList />} collapsed={collapsed} />
+              <NavItem to="/lich-su" label="Lịch sử" icon={<IconHistory />} collapsed={collapsed} />
             </>
           )}
           <div className="sidebar-section">Tài liệu</div>
-          <NavItem to="/kho-tai-lieu" label="Kho tài liệu" icon={<IconFolder />} />
+          <NavItem to="/kho-tai-lieu" label="Kho tài liệu" icon={<IconFolder />} collapsed={collapsed} />
           {isAdmin && (
             <>
               <div className="sidebar-section">Quản trị</div>
-              <NavItem to="/tai-khoan" label="Tài khoản" icon={<IconUsers />} />
+              <NavItem to="/tai-khoan" label="Tài khoản" icon={<IconUsers />} collapsed={collapsed} />
             </>
           )}
         </nav>
 
         <div className="sidebar-foot">
-          <div className="avatar">{initials}</div>
+          <div className="avatar" title={collapsed ? user?.full_name : undefined}>
+            {initials}
+          </div>
           <div className="who">
             <strong>{user?.full_name}</strong>
             <span>
@@ -97,9 +124,24 @@ export default function AppLayout({
   )
 }
 
-function NavItem({ to, label, icon }: { to: string; label: string; icon: ReactNode }) {
+function NavItem({
+  to,
+  label,
+  icon,
+  collapsed,
+}: {
+  to: string
+  label: string
+  icon: ReactNode
+  collapsed?: boolean
+}) {
   return (
-    <NavLink to={to} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} end={false}>
+    <NavLink
+      to={to}
+      className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}
+      end={false}
+      title={collapsed ? label : undefined}
+    >
       {icon}
       <span>{label}</span>
     </NavLink>
@@ -107,6 +149,22 @@ function NavItem({ to, label, icon }: { to: string; label: string; icon: ReactNo
 }
 
 /* Biểu tượng vẽ thẳng bằng SVG - không kéo thêm thư viện icon nào. */
+
+function IconChevronLeft({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15 18l-6-6 6-6" />
+    </svg>
+  )
+}
 
 function IconList() {
   return (
@@ -150,3 +208,4 @@ function IconLogout() {
     </svg>
   )
 }
+
