@@ -811,13 +811,15 @@ export default function EformPage() {
             )}
           </div>
 
-          <div className="pane-slot" hidden={view !== 'phien'}>
-            <SessionSummary
-              itemId={itemId}
-              active={view === 'phien'}
-              onOpen={(next) => navigate(`/thu-tuc/${key}/eform?item=${next}`)}
-            />
-          </div>
+          {view === 'phien' && (
+            <div className="doc-pane">
+              <SessionSummary
+                itemId={itemId}
+                active={view === 'phien'}
+                onOpen={(next) => navigate(`/thu-tuc/${key}/eform?item=${next}`)}
+              />
+            </div>
+          )}
 
           {/* MÀN 3: Dữ liệu bóc tách — sửa cho đúng (bên ngoài bên phải) */}
           <aside className="label-pane" hidden={view === 'phien'}>
