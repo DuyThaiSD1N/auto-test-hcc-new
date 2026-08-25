@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     batch_api_secret: str = ""
     batch_api_timeout: float = 180.0
 
+    # ---- OCR cua ho so chay qua API theo lo (tuy chon) ----
+    # API batch khong tra van ban OCR; worker cua Auto Fill HCC cat OCR vao collection
+    # `ocr_cache` (Mongo cua BE, TTL 12 gio) theo sha256 file. Tro thang toi Mongo do de doc.
+    # De trong = khong xem duoc OCR khi chay batch, moi thu khac van binh thuong.
+    ocr_cache_mongo_uri: str = ""
+    ocr_cache_db: str = "autofill_hcc"
+    ocr_cache_key_version: str = "v2-tiengnoi"
+
     # Duong dan LibreOffice de chuyen DOC/RTF/ODT sang PDF; de trong = tu do tim
     soffice_path: str = ""
 
@@ -102,6 +110,10 @@ class Settings(BaseSettings):
     @property
     def internal_configured(self) -> bool:
         return bool(self.internal_username.strip() and self.internal_password.strip())
+
+    @property
+    def ocr_cache_configured(self) -> bool:
+        return bool(self.ocr_cache_mongo_uri.strip())
 
     @property
     def batch_api_configured(self) -> bool:

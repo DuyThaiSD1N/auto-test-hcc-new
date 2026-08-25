@@ -65,6 +65,8 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
     await db.results.create_index("itemId", unique=True)
     await db.results.create_index("jobId")
     await db.results.create_index([("savedAt", -1)])
+    # Van ban OCR da cat lai tu ocr_cache cua BE (cache do chi song 12 gio)
+    await db.ocr_texts.create_index("itemId", unique=True)
     # Nhan da sua tay (ground truth)
     await db.labels.create_index("itemId", unique=True)
     await db.labels.create_index("jobId")
