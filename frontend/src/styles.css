@@ -1436,6 +1436,46 @@ select:disabled {
   color: #64748b;
 }
 
+.doc-file-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 28px 20px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  margin-top: 10px;
+}
+
+.doc-file-card .file-icon {
+  font-size: 40px;
+  margin-bottom: 10px;
+}
+
+.doc-file-card strong {
+  font-size: 14px;
+  color: #0f172a;
+  margin-bottom: 6px;
+}
+
+.doc-file-card p {
+  font-size: 12.5px;
+  color: #64748b;
+  margin: 0 0 12px;
+}
+
+.file-name-badge {
+  display: inline-block;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .doc-pane {
   flex: 1.6;
   min-width: 0;

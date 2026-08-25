@@ -573,13 +573,6 @@ export default function EformPage() {
             onClick={() => setView('3pane')}
             disabled={!eform}
           >
-            3 Màn (Đồng bộ)
-          </button>
-          <button
-            className={`chip${view === 'eform' ? ' active' : ''}`}
-            onClick={() => setView('eform')}
-            disabled={!eform}
-          >
             Form đã điền
           </button>
           <button
@@ -650,7 +643,7 @@ export default function EformPage() {
             )}
           </div>
 
-          {/* MÀN 2: Hiển thị văn bản / ảnh file bóc tách (ở giữa) */}
+          {/* MÀN 2: Hiển thị file PDF, DOCX, Ảnh bản quét người dùng gửi (ở giữa) */}
           <div
             className="doc-pane pane-ocr-file"
             hidden={view !== '3pane' && view !== 'json'}
@@ -658,10 +651,10 @@ export default function EformPage() {
             {view === '3pane' ? (
               <div className="doc-ocr-pane">
                 <div className="doc-tabs">
-                  <strong>Hiển thị ảnh / Văn bản file bóc tách</strong>
+                  <strong>Hiển thị file PDF / DOCX / Ảnh người dùng gửi</strong>
                   {hasOcrText && (
                     <button className="ghost-btn" onClick={copyOcr}>
-                      {copiedOcr ? 'Đã chép ✓' : 'Chép OCR'}
+                      {copiedOcr ? 'Đã chép ✓' : 'Chép nội dung'}
                     </button>
                   )}
                 </div>
@@ -670,7 +663,9 @@ export default function EformPage() {
                     <div className="paper-doc">
                       {ocr.pages.map((p, idx) => (
                         <div className="paper-page" key={idx}>
-                          <div className="paper-page-head">📄 {p.label}</div>
+                          <div className="paper-page-head">
+                            📄 {p.label} {ocr.documents.length > 0 ? `(${ocr.documents[0]})` : ''}
+                          </div>
                           <pre className="paper-text">{p.text}</pre>
                         </div>
                       ))}
@@ -678,31 +673,37 @@ export default function EformPage() {
                   ) : ocr.text ? (
                     <div className="paper-doc">
                       <div className="paper-page">
+                        <div className="paper-page-head">
+                          📄 File đính kèm ({ocr.documents.join(' · ') || 'Tài liệu PDF/DOCX/Ảnh'})
+                        </div>
                         <pre className="paper-text">{ocr.text}</pre>
                       </div>
                     </div>
                   ) : ocrRemote === 'dang-tai' ? (
-                    <div className="doc-ocr-loading">Đang lấy văn bản bóc tách từ file…</div>
-                  ) : typeof ocrRemote === 'object' && ocrRemote?.available ? (
+                    <div className="doc-ocr-loading">Đang tải hiển thị file PDF / DOCX / Ảnh…</div>
+                  ) : typeof ocrRemote === 'object' && ocrRemote?.available && ocrRemote.ocrText ? (
                     <div className="paper-doc">
                       <div className="paper-page">
+                        <div className="paper-page-head">
+                          📄 Nội dung file ({ocr.documents.join(' · ') || 'Tài liệu bản quét'})
+                        </div>
                         <pre className="paper-text">{ocrRemote.ocrText}</pre>
                       </div>
                     </div>
                   ) : (
                     <div className="paper-doc">
                       <div className="paper-page">
-                        <div className="paper-page-head">📄 Dữ liệu bóc tách từ file</div>
-                        <pre className="paper-text">
-                          {JSON.stringify(
-                            fields.reduce(
-                              (acc, f) => ({ ...acc, [f.name]: f.value }),
-                              {},
-                            ),
-                            null,
-                            2,
+                        <div className="paper-page-head">
+                          📄 File đính kèm ({ocr.documents.join(' · ') || 'PDF / DOCX / Ảnh người dùng gửi'})
+                        </div>
+                        <div className="doc-file-card">
+                          <div className="file-icon">📑</div>
+                          <strong>Hiển thị tệp đính kèm (PDF / DOCX / Ảnh)</strong>
+                          <p>Tệp hồ sơ do người dùng tải lên để thực hiện thủ tục hành chính.</p>
+                          {ocr.documents.length > 0 && (
+                            <span className="file-name-badge">{ocr.documents.join(', ')}</span>
                           )}
-                        </pre>
+                        </div>
                       </div>
                     </div>
                   )}
